@@ -1,5 +1,5 @@
 // Setup check: open /api/health to see which settings are missing. Shows yes/no only, never the secret values.
-import { getApp } from '../lib/instance.js';
+import { getApp, cleanSupabaseUrl } from '../lib/instance.js';
 import { emailReady } from '../lib/email.js';
 
 function keyType(k) {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     ADMIN_PIN: /^\d{6,}$/.test(env.ADMIN_PIN || '') ? 'set' : env.ADMIN_PIN ? 'WRONG: must be 6 or more numbers only' : 'missing',
     SESSION_SECRET: (env.SESSION_SECRET || '').length >= 32 ? 'set' : env.SESSION_SECRET ? 'WRONG: too short' : 'missing',
     APP_URL: env.APP_URL ? (/^https:\/\//.test(env.APP_URL) ? env.APP_URL : 'WRONG: must start with https://') : 'missing',
-    SUPABASE_URL: env.SUPABASE_URL ? (/^https:\/\/[a-z0-9]+\.supabase\.co\/?$/.test(env.SUPABASE_URL.trim()) ? 'set' : 'WRONG: should look like https://abcdefgh.supabase.co') : 'missing',
+    SUPABASE_URL: env.SUPABASE_URL ? (/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(cleanSupabaseUrl(env.SUPABASE_URL)) ? 'set' : 'WRONG: should look like https://abcdefgh.supabase.co (Supabase > Project Settings > Data API > Project URL)') : 'missing',
     SUPABASE_SERVICE_KEY: keyType((env.SUPABASE_SERVICE_KEY || '').trim()),
     database: 'not checked', photo_storage: 'not checked',
     email: emailReady(env) ? 'set up' : 'not set up yet (snags show "Not emailed" until IT gives you the mailbox)',
