@@ -42,6 +42,7 @@ Put the mailbox and password into `SMTP_USER` and `SMTP_PASS` in Vercel and rede
 | Person | How they get in | What they see |
 |---|---|---|
 | You (admin PIN) | PIN once per phone | Everything, plus project setup and PINs |
+| Other PMs (PM PIN) | PIN once per phone | Only the projects they set up, plus their PINs and contractors |
 | Site team (project PIN) | PIN once per phone | Only the projects whose PINs they've entered |
 | Contractor | Link in their snag email, no login | Only their own snags on that project |
 
@@ -49,6 +50,12 @@ Put the mailbox and password into `SMTP_USER` and `SMTP_PASS` in Vercel and rede
 - If a PIN gets passed around, change it on the project screen. That phone can't unlock it again without the new PIN.
 - If a contractor's link gets forwarded, tap **Stop old link and make a new one** on the project.
 - Photos are private. They only load for someone with a PIN or the right contractor link.
+
+## Adding another project manager
+Projects tab > **Add a project manager**: name, work email and a PIN (one is made for you). Tap **Copy message** and send it to them. It has the link and their PIN. They can then set up their own projects. You still see everything.
+
+## Updating the database after an app update
+If `/api/health` says the database needs updating, open `supabase/schema.sql` on GitHub, copy it, paste it into the Supabase SQL Editor and click **Run**. It's safe to run again and never deletes data.
 
 ## Changing survey questions
 They're in `public/questions.js`. Send Claude the filled-in Survey Questions template and it updates the file.

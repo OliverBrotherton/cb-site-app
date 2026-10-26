@@ -25,7 +25,11 @@ export default async function handler(req, res) {
   };
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
     const { store } = getApp();
-    try { await store.select('projects', { id: '00000000-0000-0000-0000-000000000000' }); out.database = 'OK'; }
+    try {
+      await store.select('projects', { id: '00000000-0000-0000-0000-000000000000' });
+      try { await store.select('pms', { id: '00000000-0000-0000-0000-000000000000' }); await store.select('projects', { pm_id: '00000000-0000-0000-0000-000000000000' }); out.database = 'OK'; }
+      catch { out.database = 'WRONG: database needs updating for project manager PINs. Run supabase/schema.sql again in the Supabase SQL Editor'; }
+    }
     catch (e) { out.database = /does not exist|schema cache/i.test(e.message) ? 'WRONG: tables missing, run supabase/schema.sql in the Supabase SQL Editor' : /Invalid API key|JWT|apikey/i.test(e.message) ? 'WRONG: Supabase rejected the key' : 'ERROR: ' + e.message; }
     try { await store.photoUrl('health-check/none.jpg'); out.photo_storage = 'OK'; }
     catch (e) { out.photo_storage = /bucket/i.test(e.message) ? 'WRONG: photos bucket missing, run supabase/schema.sql again' : /not found|Object not found/i.test(e.message) ? 'OK' : 'ERROR: ' + e.message; }

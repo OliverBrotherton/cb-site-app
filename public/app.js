@@ -31,7 +31,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- state ---------- */
 const S={token:'',ctoken:'',name:'',role:'',mode:'pm',ready:false,emailReady:false,
- projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),
+ pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
@@ -59,8 +59,8 @@ async function load(){
     try{
       const d=await api('data');
       S.role=d.role;S.emailReady=d.emailReady;
-      for(const [k,list] of [['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags]]){S[k]=new Map(list.map(x=>[x.id,x]))}
-      if(d.role==='contractor'){S.mode='contractor';S.me=d.me}
+      for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags]]){S[k]=new Map(list.map(x=>[x.id,x]))}
+      S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
     }catch(e){
       if(S.ctoken){$('#main').innerHTML=`<div class="empty"><h3>This link isn't working</h3><p>${esc(e.message)}</p></div>`;return}
@@ -77,9 +77,9 @@ function showGate(msg){
   $('#appwrap').hidden=true;const g=$('#gate');g.hidden=false;
   g.innerHTML=`<form class="gate-card" id="gate-form" autocomplete="off">
     <div class="gate-logo">${LOGO}<div class="wm"><b>Chas</b><span>Berger</span></div></div>
-    <div><h1 class="page-title">Site App</h1><p class="lead">Enter the PIN for your project. You only need to do this once on this phone.</p></div>
+    <div><h1 class="page-title">Site App</h1><p class="lead">Enter your project PIN. You only need to do this once on this phone.</p></div>
     <div class="field"><label for="g-name">Your name</label><p class="help">So the team knows who raised what.</p><input id="g-name" class="inp" autocomplete="name" value="${esc(S.name)}" placeholder="e.g. Dave Hughes" required></div>
-    <div class="field"><label for="g-pin">Project PIN</label><input id="g-pin" class="inp pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="one-time-code" required></div>
+    <div class="field"><label for="g-pin">Your PIN</label><input id="g-pin" class="inp pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="one-time-code" required></div>
     <p class="err" id="g-err">${esc(msg||'')}</p>
     <button class="btn primary block" type="submit" style="min-height:58px;font-size:18px">Open the app</button>
     <p class="meta">Don't know the PIN? Ask your project manager.</p></form>`;
@@ -116,8 +116,8 @@ function shell(){
   const vb=`<div id="vbody" style="display:flex;flex-direction:column;gap:16px"></div>`;
   if(S.mode==='contractor')return vb;
   if(S.view)return vb;
-  if(S.tab==='projects')return`<div class="h-row"><div><h1 class="page-title">Projects</h1><p class="lead">${!S.role?'':S.role==='admin'?'Set up each job: its PIN, your email, and the contractors who close out snags.':'The projects unlocked on this phone.'}</p></div></div>
-    ${!S.role?'':S.role==='admin'?`<button type="button" class="btn primary block" data-act="new-project" style="min-height:60px;font-size:17px">${I.plus} New project</button>`:`<button type="button" class="btn primary block" data-act="add-pin" style="min-height:60px;font-size:17px">${I.plus} Add another project PIN</button>`}${vb}`;
+  if(S.tab==='projects')return`<div class="h-row"><div><h1 class="page-title">Projects</h1><p class="lead">${!S.role?'':canManage()?'Set up each job: its PIN, your email, and the contractors who close out snags.':'The projects unlocked on this phone.'}</p></div></div>
+    ${!S.role?'':canManage()?`<button type="button" class="btn primary block" data-act="new-project" style="min-height:60px;font-size:17px">${I.plus} New project</button>`:`<button type="button" class="btn primary block" data-act="add-pin" style="min-height:60px;font-size:17px">${I.plus} Add another project PIN</button>`}${vb}`;
   if(S.tab==='addresses')return`
     <div class="h-row"><div><h1 class="page-title">Addresses</h1><p class="lead">Tap an address to survey it or raise a snag.</p></div></div>
     <div class="big-actions"><button type="button" class="btn primary" data-act="add-addresses">${I.plus} Add addresses</button><button type="button" class="btn" data-act="new-snag">${I.warn} Raise a snag</button></div>
@@ -141,6 +141,7 @@ function renderBody(){
 const projectOf=p=>p&&S.projects.get(p.project_id)||null;
 const projectName=p=>{const pr=projectOf(p);return pr?pr.name:''};
 const contractorsOf=pid=>[...S.contractors.values()].filter(c=>c.project_id===pid).sort((a,b)=>a.name.localeCompare(b.name));
+const canManage=()=>S.role==='admin'||S.role==='pm';
 const contractorLink=c=>c&&c.token?location.origin+'/?c='+c.token:'';
 function projectList(){return[...S.projects.values()].sort((a,b)=>a.name.localeCompare(b.name))}
 
@@ -216,17 +217,24 @@ function propertyBody(){
 function projectsBody(){
   const list=projectList();
   let out='';
-  if(!list.length)out=S.role==='admin'?`<div class="empty"><h3>No projects yet</h3><p>Make one project per contract. Each gets its own PIN for the site team, and its contractors get snags emailed straight to them.</p></div>`:`<div class="empty"><h3>No projects unlocked</h3><p>Ask your project manager for the project PIN.</p></div>`;
+  if(!list.length)out=canManage()?`<div class="empty"><h3>No projects yet</h3><p>Make one project per contract. Each gets its own PIN for the site team, and its contractors get snags emailed straight to them.</p></div>`:`<div class="empty"><h3>No projects unlocked</h3><p>Ask your project manager for the project PIN.</p></div>`;
   else out=`<div class="list">${list.map(pr=>{
     const props=[...S.props.values()].filter(p=>p.project_id===pr.id);const ids=new Set(props.map(p=>p.id));
     const open=[...S.snags.values()].filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;const cs=contractorsOf(pr.id);
-    return`<button type="button" class="row" data-act="open-project" data-id="${pr.id}"><div class="main"><span class="t">${esc(pr.name)}</span><span class="s"><span>${props.length} address${props.length===1?'':'es'}</span><span>${cs.length} contractor${cs.length===1?'':'s'}</span>${S.role==='admin'?`<span class="mono">PIN ${esc(pr.pin)}</span>`:''}</span></div><div class="end">${open?`<span class="badge-snags">${open} open</span>`:''}</div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`;
-  return out+`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div><b>On this phone</b><div class="meta">${esc(S.name||'No name')} · ${S.role==='admin'?'Admin (all projects)':'Site team'}</div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="change-name">Change my name</button><button type="button" class="btn danger" data-act="sign-out">Lock this phone</button></div></div>`;
+    return`<button type="button" class="row" data-act="open-project" data-id="${pr.id}"><div class="main"><span class="t">${esc(pr.name)}</span><span class="s"><span>${props.length} address${props.length===1?'':'es'}</span><span>${cs.length} contractor${cs.length===1?'':'s'}</span>${pr.manages?`<span class="mono">PIN ${esc(pr.pin)}</span>`:''}${S.role==='admin'?`<span>${esc((S.pms.get(pr.pm_id)||{}).name||'Run by you')}</span>`:''}</span></div><div class="end">${open?`<span class="badge-snags">${open} open</span>`:''}</div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`;
+  if(S.role==='admin'){
+    const pms=[...S.pms.values()].sort((a,b)=>a.name.localeCompare(b.name));
+    out+=`<div class="section-h"><h3>Project managers</h3><span class="meta">${pms.length}</span></div>
+    <p class="meta" style="margin:-8px 0 0">Give each PM their own PIN. They can set up and run their own projects, and only see theirs.</p>
+    ${pms.length?`<div class="list">${pms.map(m=>{const n=[...S.projects.values()].filter(p=>p.pm_id===m.id).length;return`<button type="button" class="row" data-act="open-pm" data-id="${m.id}"><div class="main"><span class="t">${esc(m.name)}</span><span class="s"><span>${esc(m.email||'')}</span><span class="mono">PIN ${esc(m.pin)}</span><span>${n} project${n===1?'':'s'}</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
+    <button type="button" class="btn" data-act="new-pm" style="align-self:flex-start">${I.plus} Add a project manager</button>`;
+  }
+  return out+`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div><b>On this phone</b><div class="meta">${esc(S.name||'No name')} · ${S.role==='admin'?'Admin (all projects)':S.role==='pm'?'Project manager':'Site team'}</div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="change-name">Change my name</button><button type="button" class="btn danger" data-act="sign-out">Lock this phone</button></div></div>`;
 }
 function genPin(){const b=new Uint32Array(1);crypto.getRandomValues(b);return String(100000+b[0]%900000)}
 function projectSheet(pr){
-  if(S.role!=='admin')return projectInfoSheet(pr);
-  pr=pr||{name:'',pm_email:'',pin:genPin()};
+  if(pr&&!pr.manages||!canManage())return projectInfoSheet(pr);
+  pr=pr||{name:'',pm_email:S.role==='pm'&&S.me?S.me.email:'',pin:genPin(),pm_id:null};
   let rows=pr.id?contractorsOf(pr.id).map(c=>({...c})):[];
   const readRows=()=>{document.querySelectorAll('.c-row').forEach((el,i)=>{if(!rows[i])return;rows[i].name=$('.c-name',el).value.trim();rows[i].email=$('.c-email',el).value.trim();rows[i].trade=$('.c-trade',el).value})};
   const drawRows=()=>{$('#c-rows').innerHTML=rows.length?rows.map((c,i)=>`<div class="c-row">
@@ -238,7 +246,8 @@ function projectSheet(pr){
   openSheet({title:pr.id?'Edit project':'New project',
    body:`<div class="field"><label for="pj-n">Project name</label><p class="help">What your team calls the contract, e.g. "Leeds K&amp;B Phase 2".</p><input id="pj-n" class="inp" value="${esc(pr.name)}"></div>
    <div class="field"><label for="pj-pin">Site team PIN</label><p class="help">Give this to your site team. It opens this project only. Change it if it gets passed around.</p><div class="copy-row"><input id="pj-pin" class="inp mono" inputmode="numeric" maxlength="6" value="${esc(pr.pin)}" style="font-size:22px;letter-spacing:.2em"><button type="button" class="btn" data-act="pj-newpin">New PIN</button></div></div>
-   <div class="field"><label for="pj-e">Your work email</label><p class="help">Copied in on every snag email, and told when a contractor closes one out.</p><input id="pj-e" class="inp" type="email" inputmode="email" autocapitalize="off" value="${esc(pr.pm_email)}" placeholder="you@chasberger.co.uk"></div>
+   ${S.role==='admin'&&S.pms.size?`<div class="field"><label for="pj-pm">Run by</label><select id="pj-pm" class="inp"><option value="">You (admin)</option>${[...S.pms.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${m.id}" ${pr.pm_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>`:''}
+   <div class="field"><label for="pj-e">Project manager's work email</label><p class="help">Copied in on every snag email, and told when a contractor closes one out.</p><input id="pj-e" class="inp" type="email" inputmode="email" autocapitalize="off" value="${esc(pr.pm_email)}" placeholder="you@chasberger.co.uk"></div>
    <div class="section-h"><h3>Contractors</h3></div>
    <p class="meta" style="margin:-8px 0 0">Snags you assign to them get emailed with photos and a link. The link shows only their snags, with no login.</p>
    <div id="c-rows" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -253,11 +262,28 @@ function projectSheet(pr){
     'c-newlink':async b=>{try{await api('newContractorLink',{id:b.dataset.id});await load();closeSheet();projectSheet(S.projects.get(pr.id));toast('New link made. The old one no longer works.')}catch(e){toast(e.message)}},
     'pj-save':async btn=>{
       readRows();btn.disabled=true;
-      try{await api('saveProject',{id:pr.id,name:$('#pj-n').value,pm_email:$('#pj-e').value,pin:$('#pj-pin').value.trim(),contractors:rows.map(c=>({id:c.id,name:c.name,email:c.email,trade:c.trade}))});await load();closeSheet();toast(pr.id?'Project saved':'Project created. Open it again to copy the contractor links.')}
+      try{await api('saveProject',{id:pr.id,pm_id:$('#pj-pm')?$('#pj-pm').value||null:pr.pm_id,name:$('#pj-n').value,pm_email:$('#pj-e').value,pin:$('#pj-pin').value.trim(),contractors:rows.map(c=>({id:c.id,name:c.name,email:c.email,trade:c.trade}))});await load();closeSheet();toast(pr.id?'Project saved':'Project created. Open it again to copy the contractor links.')}
       catch(e){btn.disabled=false;toast(e.message)}
     },
     'pj-del':async btn=>{if(btn.dataset.armed!=='1'){btn.dataset.armed='1';btn.textContent='Tap again to delete (addresses are kept)';setTimeout(()=>{btn.dataset.armed='';btn.textContent='Delete project'},4000);return}
       try{await api('deleteProject',{id:pr.id});await load();closeSheet();toast('Project deleted')}catch(e){toast(e.message)}}}});
+}
+function pmSheet(m){
+  m=m||{name:'',email:'',pin:genPin()};
+  openSheet({title:m.id?'Project manager':'Add a project manager',
+   body:`<div class="field"><label for="pm-n">Name</label><input id="pm-n" class="inp" value="${esc(m.name)}" placeholder="e.g. Sarah Khan"></div>
+   <div class="field"><label for="pm-e">Work email</label><p class="help">Filled in for them on each new project, so they get copied in on snag emails.</p><input id="pm-e" class="inp" type="email" inputmode="email" autocapitalize="off" value="${esc(m.email)}" placeholder="s.khan@chasberger.co.uk"></div>
+   <div class="field"><label for="pm-pin">Their PM PIN</label><p class="help">Give them this and the app link. It lets them set up their own projects. Keep it separate from site team PINs.</p><div class="copy-row"><input id="pm-pin" class="inp mono" inputmode="numeric" maxlength="6" value="${esc(m.pin)}" style="font-size:22px;letter-spacing:.2em"><button type="button" class="btn" data-act="pm-newpin">New PIN</button></div></div>
+   <div class="panel" style="font-size:15px"><b>Message to send them</b><div class="copy-row" style="flex-direction:column;margin-top:8px"><textarea id="pm-msg" class="inp" readonly rows="5"></textarea><button type="button" class="btn" data-act="pm-copy">Copy message</button></div></div>
+   ${m.id?`<button type="button" class="btn danger" data-act="pm-del" style="align-self:flex-start">Remove this project manager</button>`:''}`,
+   foot:`<button type="button" class="btn primary" data-act="pm-save">${m.id?'Save':'Add project manager'}</button>`,
+   mount(sh){const msg=()=>{$('#pm-msg').value=`Hi ${$('#pm-n').value.trim().split(' ')[0]||''}, here's the Chas Berger Site App: ${location.origin}\n\nYour PM PIN is ${$('#pm-pin').value}. Enter it once and you can set up your own projects, site team PINs and contractors.\n\nDon't share this PIN with site teams. Each project gets its own PIN for them.`};['#pm-n','#pm-pin'].forEach(x=>$(x,sh).addEventListener('input',msg));msg()},
+   acts:{
+    'pm-newpin':()=>{$('#pm-pin').value=genPin();$('#pm-pin').dispatchEvent(new Event('input',{bubbles:true}))},
+    'pm-copy':b=>copyText($('#pm-msg').value,b),
+    'pm-save':async b=>{b.disabled=true;try{await api('savePm',{id:m.id,name:$('#pm-n').value,email:$('#pm-e').value,pin:$('#pm-pin').value.trim()});await load();closeSheet();toast(m.id?'Saved':'Project manager added. Send them the message with their PIN.')}catch(e){b.disabled=false;toast(e.message)}},
+    'pm-del':async btn=>{if(btn.dataset.armed!=='1'){btn.dataset.armed='1';btn.textContent='Tap again: their PIN stops working, their projects move to you';setTimeout(()=>{btn.dataset.armed='';btn.textContent='Remove this project manager'},4000);return}
+      try{await api('deletePm',{id:m.id});await load();closeSheet();toast('Removed')}catch(e){toast(e.message)}}}});
 }
 function projectInfoSheet(pr){
   const cs=contractorsOf(pr.id);
@@ -653,6 +679,8 @@ document.addEventListener('click',e=>{
     case'new-project':projectSheet(null);break;
     case'open-project':projectSheet(S.projects.get(t.dataset.id));break;
     case'add-pin':addPinSheet();break;
+    case'new-pm':pmSheet(null);break;
+    case'open-pm':pmSheet(S.pms.get(t.dataset.id));break;
     case'change-name':nameSheet();break;
     case'sign-out':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again: you\'ll need the PIN to get back in';return}signOut();break;
     case'copy':copyText(t.dataset.v,t);break;

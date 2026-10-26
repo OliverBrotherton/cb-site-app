@@ -163,6 +163,47 @@ try {
   await staff.reload(); await staff.waitForSelector('[data-act=open-prop]');
   ok((await staff.locator('[data-act=open-prop]').count()) === 2, 'moved address leaves the old project\'s PIN');
 
+  // ---------- another project manager runs their own projects ----------
+  await admin.click('.nav [data-tab=projects]');
+  await admin.click('[data-act=new-pm]');
+  await admin.fill('#pm-n', 'Sarah Khan');
+  await admin.fill('#pm-e', 's.khan@chasberger.co.uk');
+  const pmPin = await admin.inputValue('#pm-pin');
+  ok((await admin.inputValue('#pm-msg')).includes(pmPin), 'PM welcome message includes their PIN');
+  await shot(admin, '11-pm');
+  await admin.click('[data-act=pm-save]');
+  await toastHas(admin, 'Project manager added');
+  const pmPage = await b.newPage(phone);
+  await pmPage.goto(BASE);
+  await pmPage.fill('#g-name', 'Sarah');
+  await pmPage.fill('#g-pin', pmPin);
+  await pmPage.click('#gate-form button[type=submit]');
+  await pmPage.waitForSelector('#vbody .empty');
+  await pmPage.click('.nav [data-tab=projects]');
+  await pmPage.waitForSelector('[data-act=new-project]');
+  ok(!(await pmPage.isVisible('text=Leeds K&B Phase 2')), 'new PM cannot see other PMs\' projects');
+  await pmPage.click('[data-act=new-project] >> nth=0');
+  ok((await pmPage.inputValue('#pj-e')) === 's.khan@chasberger.co.uk', 'PM email pre-filled on their project');
+  await pmPage.fill('#pj-n', 'Wakefield Windows');
+  const pmProjPin = await pmPage.inputValue('#pj-pin');
+  await pmPage.click('[data-act=pj-save]');
+  await toastHas(pmPage, 'Project created');
+  ok(await pmPage.isVisible(`text=PIN ${pmProjPin}`), 'PM creates their own project and sees its PIN');
+  const pmTok = await pmPage.evaluate(() => JSON.parse(localStorage.getItem('cbsa')).token);
+  const leedsId = d0.projects[0].id;
+  const hijack = await api('saveProject', { id: leedsId, name: 'Hijacked', pin: '111111' }, { authorization: 'Bearer ' + pmTok });
+  ok(hijack.ok === false, 'PM cannot change another PM\'s project');
+  const pmData = (await api('data', {}, { authorization: 'Bearer ' + pmTok })).data;
+  ok(pmData.projects.length === 1 && pmData.properties.length === 0 && pmData.pms.length === 0, 'PM data holds only their own project');
+  await admin.reload(); await admin.waitForSelector('#vbody'); await admin.click('.nav [data-tab=projects]');
+  await admin.waitForSelector('text=Wakefield Windows');
+  ok(await admin.isVisible('text=Wakefield Windows'), 'admin sees the PM\'s project');
+  const st2 = await b.newPage(phone);
+  await st2.goto(BASE); await st2.fill('#g-name', 'Lee'); await st2.fill('#g-pin', pmProjPin); await st2.click('#gate-form button[type=submit]');
+  await st2.waitForSelector('#vbody .empty');
+  await st2.click('.nav [data-tab=projects]');
+  ok(await st2.isVisible('text=Wakefield Windows') && !(await st2.isVisible('[data-act=new-project]')), 'site team on PM\'s project can\'t set up projects');
+
   // ---------- PIN brute force is blocked ----------
   let last;
   for (let i = 0; i < 9; i++) last = await api('login', { pin: String(100000 + i) });

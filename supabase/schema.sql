@@ -3,6 +3,14 @@
 
 create extension if not exists pgcrypto;
 
+create table if not exists pms (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null default '',
+  pin text not null unique,
+  created_at bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -10,6 +18,9 @@ create table if not exists projects (
   pin text not null unique,
   created_at bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
+
+-- Added later: which project manager runs each project
+alter table projects add column if not exists pm_id uuid references pms(id) on delete set null;
 
 create table if not exists contractors (
   id uuid primary key default gen_random_uuid(),
@@ -80,6 +91,7 @@ create table if not exists login_attempts (
   at bigint not null
 );
 
+create index if not exists projects_pm on projects(pm_id);
 create index if not exists properties_project on properties(project_id);
 create index if not exists snags_property on snags(property_id);
 create index if not exists snags_contractor on snags(contractor_id);
@@ -87,6 +99,7 @@ create index if not exists surveys_property on surveys(property_id);
 create index if not exists login_attempts_ip on login_attempts(ip, at);
 
 -- Lock every table: only the app's server (using the secret service key) can read or write.
+alter table pms enable row level security;
 alter table projects enable row level security;
 alter table contractors enable row level security;
 alter table properties enable row level security;
