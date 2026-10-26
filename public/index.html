@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#CF1523">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CB Site App">
+<title>Chas Berger Site App</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden></div>
+<div id="appwrap" hidden>
+<header class="top"><div class="top-in" id="top"></div></header>
+<main id="main"><div class="loading">Loading…</div></main>
+<nav class="nav" aria-label="Sections"><div class="nav-in">
+  <button type="button" data-act="tab" data-tab="addresses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Addresses</button>
+  <button type="button" data-act="tab" data-tab="snags"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>Snags<span class="count" id="nav-snag-count" hidden></span></button>
+  <button type="button" data-act="tab" data-tab="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3"/><path d="M3 13h18"/></svg>Projects</button>
+  <button type="button" data-act="tab" data-tab="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>Progress</button>
+</div></nav>
+</div>
+<div class="sheet" id="sheet" hidden></div>
+<div class="lightbox" id="lightbox" hidden><img id="lb-img" alt="Photo"><button type="button" data-act="close-lb">Close</button></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/questions.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

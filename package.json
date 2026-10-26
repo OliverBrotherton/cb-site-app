@@ -1,0 +1,14 @@
+{
+  "name": "cb-site-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test": "node test/smoke.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.45.4",
+    "nodemailer": "6.9.15"
+  },
+  "engines": { "node": ">=20" }
+}
