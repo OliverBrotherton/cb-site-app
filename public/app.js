@@ -61,10 +61,10 @@ async function load(){
       S.role=d.role;S.emailReady=d.emailReady;
       for(const [k,list] of [['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       if(d.role==='contractor'){S.mode='contractor';S.me=d.me}
-      S.ready=true;render();
+      S.ready=true;S.loadError='';render();
     }catch(e){
       if(S.ctoken){$('#main').innerHTML=`<div class="empty"><h3>This link isn't working</h3><p>${esc(e.message)}</p></div>`;return}
-      if(!S.ready){$('#main').innerHTML=`<div class="empty"><h3>Couldn't load your jobs</h3><p>${esc(e.message)}</p><button type="button" class="btn primary" data-act="retry">Try again</button></div>`}
+      if(!S.ready){S.loadError=e.message;S.rendered=null;render()}
       else toast(e.message);
     }finally{loading=null}
   })();
@@ -97,7 +97,7 @@ function signOut(msg){S.token='';S.ready=false;S.rendered=null;save();closeSheet
 function startApp(){$('#gate').hidden=true;$('#appwrap').hidden=false;render();load()}
 
 /* ---------- render ---------- */
-function viewKey(){return S.mode==='contractor'?'contractor':S.view?S.view.name+':'+S.view.id:S.tab}
+function viewKey(){return S.mode==='contractor'?'contractor':S.view?S.view.name+':'+S.view.id:S.tab+':'+S.role}
 function render(){
   document.body.classList.toggle('contractor',S.mode==='contractor');
   const k=viewKey();
@@ -116,8 +116,8 @@ function shell(){
   const vb=`<div id="vbody" style="display:flex;flex-direction:column;gap:16px"></div>`;
   if(S.mode==='contractor')return vb;
   if(S.view)return vb;
-  if(S.tab==='projects')return`<div class="h-row"><div><h1 class="page-title">Projects</h1><p class="lead">${S.role==='admin'?'Set up each job: its PIN, your email, and the contractors who close out snags.':'The projects unlocked on this phone.'}</p></div></div>
-    ${S.role==='admin'?`<button type="button" class="btn primary block" data-act="new-project" style="min-height:60px;font-size:17px">${I.plus} New project</button>`:`<button type="button" class="btn primary block" data-act="add-pin" style="min-height:60px;font-size:17px">${I.plus} Add another project PIN</button>`}${vb}`;
+  if(S.tab==='projects')return`<div class="h-row"><div><h1 class="page-title">Projects</h1><p class="lead">${!S.role?'':S.role==='admin'?'Set up each job: its PIN, your email, and the contractors who close out snags.':'The projects unlocked on this phone.'}</p></div></div>
+    ${!S.role?'':S.role==='admin'?`<button type="button" class="btn primary block" data-act="new-project" style="min-height:60px;font-size:17px">${I.plus} New project</button>`:`<button type="button" class="btn primary block" data-act="add-pin" style="min-height:60px;font-size:17px">${I.plus} Add another project PIN</button>`}${vb}`;
   if(S.tab==='addresses')return`
     <div class="h-row"><div><h1 class="page-title">Addresses</h1><p class="lead">Tap an address to survey it or raise a snag.</p></div></div>
     <div class="big-actions"><button type="button" class="btn primary" data-act="add-addresses">${I.plus} Add addresses</button><button type="button" class="btn" data-act="new-snag">${I.warn} Raise a snag</button></div>
@@ -132,7 +132,7 @@ function renderBody(){
   const el=$('#vbody');if(!el)return;
   const nOpen=[...S.snags.values()].filter(s=>s.status!=='closed').length;
   const nc=$('#nav-snag-count');nc.hidden=!nOpen;nc.textContent=nOpen;
-  if(!S.ready){el.innerHTML='<div class="loading">Loading your jobs…</div>';return}
+  if(!S.ready){el.innerHTML=S.loadError?`<div class="empty"><h3>Couldn't load your jobs</h3><p>${esc(S.loadError)}</p><button type="button" class="btn primary" data-act="retry">Try again</button></div>`:'<div class="loading">Loading your jobs…</div>';return}
   if(S.mode==='contractor'){el.innerHTML=contractorBody();return}
   el.innerHTML=S.view?propertyBody():S.tab==='addresses'?addressesBody():S.tab==='snags'?snagsBody():S.tab==='projects'?projectsBody():reportsBody();
 }

@@ -9,6 +9,7 @@ export default async function handler(req, res) {
     res.status(200).json({ ok: true, data });
   } catch (e) {
     if (!e.status) console.error(e);
-    res.status(e.status || 500).json({ ok: false, error: e.status ? e.message : 'Something went wrong on the server. Try again.' });
+    const setup = !e.status && /Invalid API key|JWT|apikey|does not exist|schema cache|bucket/i.test(e.message || '');
+    res.status(e.status || 500).json({ ok: false, error: e.status ? e.message : setup ? 'The app\'s database isn\'t set up right. Open cb-site-app.vercel.app/api/health to see what to fix.' : 'Something went wrong on the server. Try again.' });
   }
 }
