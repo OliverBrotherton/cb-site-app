@@ -24,12 +24,21 @@ About 30 minutes, start to finish. You need two free accounts: **Supabase** (sto
    - `APP_URL`: the address Vercel gives you, e.g. `https://cb-site-app.vercel.app`
 5. Go to **Deployments**, open the ⋯ menu on the latest one and click **Redeploy** so it picks up the settings.
 
-## 3. Email (ask IT, 10 min of their time)
-Snag emails go out from a company mailbox, e.g. `snags@chasberger.co.uk`. Ask IT:
+## 3. Email
+The app sends snag emails one of two ways. Pick one.
 
-> "Please set up a mailbox snags@chasberger.co.uk and turn on Authenticated SMTP for it, so our site app can send emails through smtp.office365.com port 587. I need the password for it."
+**A. Through Microsoft 365 (the IT route, recommended).** Emails come from a real company mailbox, e.g. snags@chasberger.co.uk, with a copy in its Sent folder. Send IT the request in `IT-EMAIL-REQUEST.md`. They give you three values, then add these in Vercel:
 
-Put the mailbox and password into `SMTP_USER` and `SMTP_PASS` in Vercel and redeploy. Until email is set up, the app still works: snags show "Not emailed" with a **Copy email** button for sending from Outlook.
+| Key | Value |
+|---|---|
+| `MS_TENANT_ID` | Directory (tenant) ID from IT |
+| `MS_CLIENT_ID` | Application (client) ID from IT |
+| `MS_CLIENT_SECRET` | Client secret value from IT |
+| `MAIL_FROM` | `Chas Berger Snags <snags@chasberger.co.uk>` |
+
+**B. Through any email account's outgoing mail (SMTP)**, e.g. a dedicated Gmail with an app password, or Resend: set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM`.
+
+Redeploy, then check `/api/health`. The email line shows which method is in use. Until email is set up, snags show "Not emailed" with a **Copy email** button for Outlook.
 
 ## 4. First use
 1. Open the web address on your phone. Enter your name and your **admin PIN**.

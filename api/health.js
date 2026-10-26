@@ -1,6 +1,6 @@
 // Setup check: open /api/health to see which settings are missing. Shows yes/no only, never the secret values.
 import { getApp, cleanSupabaseUrl } from '../lib/instance.js';
-import { emailReady } from '../lib/email.js';
+import { emailMethod } from '../lib/email.js';
 
 function keyType(k) {
   if (!k) return 'missing';
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     SUPABASE_URL: env.SUPABASE_URL ? (/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(cleanSupabaseUrl(env.SUPABASE_URL)) ? 'set' : 'WRONG: should look like https://abcdefgh.supabase.co (Supabase > Project Settings > Data API > Project URL)') : 'missing',
     SUPABASE_SERVICE_KEY: keyType((env.SUPABASE_SERVICE_KEY || '').trim()),
     database: 'not checked', photo_storage: 'not checked',
-    email: emailReady(env) ? 'set up' : 'not set up yet (snags show "Not emailed" until IT gives you the mailbox)',
+    email: emailMethod(env) ? `set up (${emailMethod(env)})` : 'not set up yet (snags show "Not emailed" until it is)',
   };
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
     const { store } = getApp();

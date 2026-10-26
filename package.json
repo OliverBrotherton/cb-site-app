@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node dev-server.js",
-    "test": "node test/smoke.js"
+    "test": "node test/graph.js && node test/smoke.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.45.4",
