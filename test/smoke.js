@@ -23,6 +23,7 @@ try {
   // ---------- admin unlocks and sets up a project ----------
   const admin = await b.newPage(phone);
   const errors = []; admin.on('pageerror', e => errors.push(e.message));
+  admin.on('console', m => { if (/Content Security Policy|Refused to/i.test(m.text())) errors.push('CSP: ' + m.text()); });
   await admin.goto(BASE);
   await shot(admin, '01-pin');
   await admin.fill('#g-name', 'Oliver');
@@ -203,6 +204,26 @@ try {
   await st2.waitForSelector('#vbody .empty');
   await st2.click('.nav [data-tab=projects]');
   ok(await st2.isVisible('text=Wakefield Windows') && !(await st2.isVisible('[data-act=new-project]')), 'site team on PM\'s project can\'t set up projects');
+
+  // ---------- changing a PIN locks out phones that used the old one ----------
+  const before = (await api('data', {}, { authorization: 'Bearer ' + (await staff.evaluate(() => JSON.parse(localStorage.getItem('cbsa')).token)) })).ok;
+  await admin.click('.nav [data-tab=projects]');
+  await admin.click('[data-act=open-project] >> text=Leeds K&B Phase 2');
+  await admin.click('[data-act=pj-newpin]');
+  const newPin = await admin.inputValue('#pj-pin');
+  await admin.click('[data-act=pj-save]');
+  await toastHas(admin, 'Project saved');
+  await staff.reload();
+  await staff.waitForSelector('#g-err');
+  ok(before && (await staff.textContent('#g-err')).includes('PIN has changed'), 'changing a project PIN locks out phones using the old PIN');
+  await staff.fill('#g-name', 'Dave'); await staff.fill('#g-pin', newPin); await staff.click('#gate-form button[type=submit]');
+  await staff.waitForSelector('[data-act=open-prop]');
+  ok(true, 'new PIN lets them back in');
+  const sTok = await staff.evaluate(() => JSON.parse(localStorage.getItem('cbsa')).token);
+  const forged = sTok.replace(/^.{5}/, 'AAAAA');
+  ok((await api('data', {}, { authorization: 'Bearer ' + forged })).ok === false, 'tampered session tokens are rejected');
+  ok((await api('saveProject', { name: 'X', pin: '123123' }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot create projects');
+  ok((await api('savePm', { name: 'X', pin: '123124' }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot create other PMs');
 
   // ---------- PIN brute force is blocked ----------
   let last;

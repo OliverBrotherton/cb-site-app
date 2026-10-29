@@ -10,6 +10,7 @@ process.env.SESSION_SECRET ||= 'local-dev-secret-local-dev-secret-0123';
 process.env.EMAIL_MODE ||= 'log';
 const PORT = Number(process.env.PORT || 3000);
 process.env.APP_URL ||= `http://localhost:${PORT}`;
+const HEADERS = JSON.parse(fs.readFileSync('vercel.json', 'utf8')).headers[0].headers;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 
 function wrap(res) {
@@ -18,6 +19,7 @@ function wrap(res) {
   return res;
 }
 http.createServer(async (req, res) => {
+  for (const h of HEADERS) res.setHeader(h.key, h.value.replace('https://*.supabase.co', "https://*.supabase.co 'self'"));
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/rpc') {
     let raw = ''; for await (const ch of req) raw += ch;

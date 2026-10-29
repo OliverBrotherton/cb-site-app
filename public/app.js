@@ -47,7 +47,7 @@ async function api(action,payload){
   catch(e){throw{message:'No signal. Try again when you\'re back in signal.'}}
   const j=await r.json().catch(()=>({}));
   if(!r.ok||!j.ok){
-    if(r.status===401&&!S.ctoken&&action!=='login'){signOut('Enter your PIN again.')}
+    if(r.status===401&&!S.ctoken&&action!=='login'){signOut(j.error||'Enter your PIN again.')}
     throw{status:r.status,message:j.error||'Something went wrong. Try again.'};
   }
   return j.data;
@@ -635,7 +635,7 @@ function contractorSnagSheet(s){
 }
 
 /* ---------- exports ---------- */
-function csv(rows){return rows.map(r=>r.map(v=>{v=v==null?'':String(v);return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n')}
+function csv(rows){return rows.map(r=>r.map(v=>{v=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n')}
 function exportCsv(kind){
   const P=id=>S.props.get(id)||{};let rows,name;const d=todayISO();
   if(kind==='snags'){name=`snag-register-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Snag','Where','Contractor','Trade','Priority','Status','Raised','Raised by','Fix by','Fixed','Signed off','Overdue','Notes','Photos']];
