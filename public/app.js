@@ -268,7 +268,7 @@ function projectSheet(pr){
       <button type="button" class="btn danger" data-act="c-rm" data-i="${i}" style="align-self:flex-start;min-height:42px">Remove</button></div>`).join(''):'<p class="meta" style="margin:0">No contractors yet.</p>'};
   openSheet({title:pr.id?'Edit project':'New project',
    body:`<div class="field"><label for="pj-n">Project name</label><p class="help">What your team calls the contract, e.g. "Leeds K&amp;B Phase 2".</p><input id="pj-n" class="inp" value="${esc(pr.name)}"></div>
-   <div class="field"><label for="pj-pin">Site team PIN</label><p class="help">Give this to your site team. It opens this project only. Change it if it gets passed around.</p><div class="copy-row"><input id="pj-pin" class="inp mono" inputmode="numeric" maxlength="6" value="${esc(pr.pin)}" style="font-size:22px;letter-spacing:.2em"><button type="button" class="btn" data-act="pj-newpin">New PIN</button></div></div>
+   <div class="field"><label for="pj-pin">Site team PIN</label><p class="help">Give this to your site team. It opens this project only. Change it if it gets passed around.</p><div class="copy-row"><input id="pj-pin" class="inp mono" inputmode="numeric" maxlength="6" value="${esc(pr.pin)}" style="font-size:22px;letter-spacing:.2em"><button type="button" class="btn" data-act="pj-newpin">New PIN</button></div>${pr.id?`<button type="button" class="btn" data-act="pj-share" style="align-self:flex-start">Copy message for site team</button>`:''}</div>
    ${S.role==='admin'&&S.pms.size?`<div class="field"><label for="pj-pm">Run by</label><select id="pj-pm" class="inp"><option value="">You (admin)</option>${[...S.pms.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${m.id}" ${pr.pm_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>`:''}
    <div class="field"><label for="pj-e">Project manager's work email</label><p class="help">Copied in on every snag email, and told when a contractor closes one out.</p><input id="pj-e" class="inp" type="email" inputmode="email" autocapitalize="off" value="${esc(pr.pm_email)}" placeholder="you@chasberger.co.uk"></div>
    <div class="section-h"><h3>Contractors</h3></div>
@@ -280,6 +280,7 @@ function projectSheet(pr){
    mount(){drawRows()},
    acts:{
     'pj-newpin':()=>{$('#pj-pin').value=genPin()},
+    'pj-share':b=>copyText(`Here's the Chas Berger Site App for ${$('#pj-n').value.trim()}: ${location.origin}\n\nOpen it, type your name, and enter the project PIN: ${$('#pj-pin').value.trim()}\n\nYou only need to do this once. Then add it to your home screen (iPhone: Share > Add to Home Screen. Android: menu > Add to Home screen).\n\nPlease don't pass the PIN on to anyone outside the site team.`,b),
     'c-add':()=>{readRows();rows.push({name:'',email:'',trade:''});drawRows();const el=document.querySelectorAll('.c-name');if(el.length)el[el.length-1].focus()},
     'c-rm':b=>{readRows();rows.splice(+b.dataset.i,1);drawRows()},
     'c-newlink':async b=>{try{await api('newContractorLink',{id:b.dataset.id});await load();closeSheet();projectSheet(S.projects.get(pr.id));toast('New link made. The old one no longer works.')}catch(e){toast(e.message)}},
