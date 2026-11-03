@@ -135,6 +135,39 @@ try {
   const forbidden = await api('updateProperty', { id: cdata.properties[0].id, patch: { status: 'Complete' } }, { 'x-contractor': link.split('c=')[1] });
   ok(forbidden.ok === false, 'contractor cannot change addresses');
 
+  // ---------- asbestos check ----------
+  await admin.reload(); await admin.waitForSelector('#vbody .list');
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=asb-f][data-v="Not checked"]');
+  ok((await admin.locator('[data-act=open-prop]').count()) === 3, 'all addresses start as asbestos not checked');
+  await admin.click('[data-act=asb-f][data-v=all]');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  await admin.click('[data-act=asb-edit]');
+  await admin.click('label.opt:has(input[name=asb-s][value="Asbestos present"])');
+  await admin.click('[data-act=asb-save]');
+  await toastHas(admin, 'Say where the asbestos is');
+  await admin.fill('#asb-n', 'Artex ceiling in kitchen');
+  await admin.click('label.opt:has(input[name=asb-i][value="Work around it (no disturbance)"])');
+  await admin.selectOption('#asb-t', 'Refurbishment & demolition (R&D)');
+  await admin.fill('#asb-r', 'ACM-2291');
+  fs.writeFileSync('/tmp/cb-test.pdf', '%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF');
+  await admin.setInputFiles('[data-photo-input=asb]', '/tmp/cb-test.pdf');
+  await admin.waitForFunction(() => S.photos.asb && S.photos.asb.length === 1 && !S.photos.asb[0].pending);
+  await shot(admin, '12-asbestos');
+  await admin.click('[data-act=asb-save]');
+  await toastHas(admin, 'Asbestos check saved');
+  ok(await admin.isVisible('text=Asbestos present.') && await admin.isVisible('a.thumb >> text=PDF'), 'asbestos warning and survey PDF show on the address');
+  const pdfHref = await admin.getAttribute('a.thumb', 'href');
+  ok((await fetch(BASE + pdfHref)).status === 200, 'survey PDF opens');
+  await admin.click('.nav [data-tab=addresses]');
+  ok(await admin.isVisible('label.row, [data-act=open-prop] >> .pill.p-bad >> text=Asbestos'), 'address list shows the asbestos badge');
+  const bad = await api('uploadPhoto', { data: Buffer.from('not a pdf').toString('base64'), type: 'application/pdf' }, { authorization: 'Bearer ' + tok });
+  ok(bad.ok === false, 'fake PDFs are refused');
+  await con.reload(); await con.waitForSelector('[data-act=c-f][data-v=fixed]');
+  await con.click('[data-act=c-f][data-v=fixed]'); await con.click('[data-act=open-snag]');
+  ok(await con.isVisible('text=Asbestos present.'), 'contractor sees the asbestos warning');
+  await con.click('[data-act=close-sheet]');
+
   // ---------- PM sends it back ----------
   await admin.reload();
   await admin.waitForSelector('#vbody .list');
@@ -148,6 +181,48 @@ try {
   await toastHas(admin, 'Sent back to Smith Plumbing');
   em = await emails();
   ok(em.length === 3 && em[2].subject.startsWith('SENT BACK'), 'contractor emailed when sent back');
+
+  ok(em[2].text.includes('ASBESTOS: PRESENT: Artex ceiling in kitchen'), 'snag email warns about asbestos');
+
+  // ---------- scaffold strike call-off ----------
+  await admin.click('[data-act=close-sheet]').catch(() => {});
+  await admin.click('.nav [data-tab=projects]');
+  await admin.click('[data-act=open-project] >> text=Leeds K&B Phase 2');
+  await admin.click('[data-act=c-add]');
+  await admin.fill('#cn1', 'Acme Scaffolding'); await admin.fill('#ce1', 'jobs@acmescaff.co.uk'); await admin.selectOption('#ct1', 'Scaffolder');
+  await admin.click('[data-act=pj-save]'); await toastHas(admin, 'Project saved');
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  await admin.click('[data-act=new-scaffold]');
+  ok((await admin.locator('#sf-c option').count()) === 1, 'only scaffolders offered');
+  await admin.click('label.check:has(input[value="All work at height finished"])');
+  await shot(admin, '13-scaffold');
+  await admin.click('[data-act=sf-save]');
+  ok((await admin.textContent('[data-act=sf-save]')).includes('not ticked'), 'warns when pre-strike checks are missing');
+  await admin.click('[data-act=sf-save]');
+  await toastHas(admin, 'Scaffold called off and emailed');
+  em = await emails();
+  const sEmail = em[em.length - 1];
+  ok(sEmail.to === 'jobs@acmescaff.co.uk' && sEmail.cc === 'pm@chasberger.co.uk' && sEmail.subject.startsWith('Scaffold strike SC-0001') && sEmail.text.includes('ASBESTOS: PRESENT'), 'scaffolder emailed with call-off and asbestos warning');
+  const sLink = sEmail.text.match(/http:\/\/\S+\?c=\w+/)[0];
+  const scaf = await b.newPage(phone);
+  await scaf.goto(sLink); await scaf.waitForSelector('[data-act=open-scaffold]');
+  ok(!(await scaf.isVisible('[data-act=open-snag]')), 'scaffolder sees only their call-off');
+  await shot(scaf, '14-scaffolder');
+  await scaf.click('[data-act=open-scaffold]');
+  await scaf.click('[data-act=cf-ok]'); await toastHas(scaf, 'Date confirmed');
+  em = await emails();
+  ok(em[em.length - 1].to === 'pm@chasberger.co.uk' && em[em.length - 1].subject.startsWith('Strike date confirmed'), 'PM told the strike date is confirmed');
+  await scaf.click('[data-act=open-scaffold]');
+  await scaf.click('[data-act=cf-struck]'); await toastHas(scaf, 'Add a photo');
+  await scaf.setInputFiles('[data-photo-input=struck]', 'public/icon-192.png');
+  await scaf.waitForSelector('[data-photos=struck] img[data-act=view-photo]');
+  await scaf.click('[data-act=cf-struck]'); await toastHas(scaf, 'Marked as struck');
+  em = await emails();
+  ok(em[em.length - 1].subject.startsWith('Scaffold struck') && em[em.length - 1].attachments === 1, 'PM told it\'s struck, with photo');
+  await admin.reload(); await admin.waitForSelector('#vbody .list');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  ok(await admin.isVisible('[data-act=open-scaffold] >> text=Struck'), 'call-off shows as struck on the address');
 
   // ---------- move addresses between projects ----------
   await admin.click('.nav [data-tab=projects]');

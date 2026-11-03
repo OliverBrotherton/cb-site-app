@@ -14,7 +14,7 @@ For IT or anyone carrying out a security test. Describes how access works, what 
 | Admin | `ADMIN_PIN` env var | Everything, including managing PMs |
 | Project manager | Own 6-digit PIN (`pms` table) | Create and run their own projects, contractors and PINs. Site work on their projects |
 | Site team | Project's 6-digit PIN | Addresses, surveys and snags on that project only. No setup screens |
-| Contractor | 24-character random token in their email link (about 119 bits) | See their own snags; close them out with a photo. Nothing else |
+| Contractor (incl. scaffolders) | 24-character random token in their email link (about 119 bits) | See their own snags and scaffold call-offs; close snags out / confirm and mark scaffold struck, with a photo. See asbestos info for those addresses only. Nothing else |
 
 All permission checks are on the server (`lib/app.js`: `context`, `inScope`, `ownsProject`), not in the browser.
 
@@ -27,7 +27,7 @@ All permission checks are on the server (`lib/app.js`: `context`, `inScope`, `ow
 ## Other protections
 - All user text is HTML-escaped before display (`esc()`), in the app and in email bodies. Email subjects have line breaks stripped.
 - CSV downloads neutralise spreadsheet formulas (cells starting `= + - @`).
-- Photos: JPEG/PNG/WebP only, max 6 MB, random UUID file names, private bucket. They're served only to a valid PIN session or the contractor whose snag holds the photo, via 1-hour signed URLs.
+- Photos: JPEG/PNG/WebP only, max 6 MB. Asbestos survey PDFs: max 3 MB and must start with a real PDF header. random UUID file names, private bucket. They're served only to a valid PIN session or the contractor whose snag holds the photo, via 1-hour signed URLs.
 - Headers: Content-Security-Policy (scripts from self and cdnjs only, no framing), HSTS, X-Content-Type-Options, Referrer-Policy no-referrer, X-Frame-Options DENY.
 - Server inputs are length-limited and whitelisted (statuses, priorities, work types, emails, dates).
 

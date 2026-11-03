@@ -7,7 +7,7 @@ const SNAG_C={open:['To do','p-bad'],fixed:['Done - awaiting check','p-warn'],cl
 function snagLabel(s){return((S.mode==='contractor'?SNAG_C:SNAG)[s.status]||SNAG.open)}
 function rid(n=14){const a='abcdefghijkmnpqrstuvwxyz23456789';const b=new Uint8Array(n);crypto.getRandomValues(b);return[...b].map(x=>a[x%a.length]).join('')}
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TRADES=['Joiner','Plumber','Electrician','Plasterer','Tiler','Decorator','Roofer','Bricklayer','Window fitter','Groundworker','Kitchen fitter','General / labourer'];
+const TRADES=['Joiner','Plumber','Electrician','Plasterer','Tiler','Decorator','Roofer','Bricklayer','Window fitter','Groundworker','Kitchen fitter','Scaffolder','General / labourer'];
 const ROOMS=['Kitchen','Bathroom','WC','Hallway','Landing','Stairs','Living room','Bedroom 1','Bedroom 2','Bedroom 3','Loft','Front elevation','Rear elevation','Side elevation','Roof','Garden','Communal area'];
 const GFP=['Good','Fair','Poor'];
 
@@ -48,3 +48,9 @@ const TEMPLATES={
 const CLOSE={title:'Sign-off',qs:[['z_go','OK to go ahead with the works?','choice',['Yes','Yes, with conditions','No - refer to PM'],'No - refer to PM'],['z_notes','Anything else the team should know?','text']]};
 function surveySections(type){return [COMMON,...(TEMPLATES[type]||[]),CLOSE]}
 
+
+const ASB_STATUS=['No asbestos found','Asbestos present','No survey available'];
+const ASB_TYPES=['Management survey','Refurbishment & demolition (R&D)','Asbestos register only','Other'];
+const ASB_IMPACT=['Removal needed before works','Work around it (no disturbance)','Doesn\'t affect our works'];
+const SCAFF_CHECKS=['All work at height finished','Roof / elevations signed off','Snags at height closed','Tenant told','Materials and waste cleared'];
+const SCAFF={requested:['Requested','p-warn'],confirmed:['Date confirmed','p-info'],struck:['Struck','p-ok'],cancelled:['Cancelled','p-grey']};

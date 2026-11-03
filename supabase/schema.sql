@@ -85,6 +85,42 @@ create table if not exists snags (
   emailed_to text not null default ''
 );
 
+-- Added later: asbestos survey check on each address
+alter table properties add column if not exists asb_status text not null default 'Not checked';
+alter table properties add column if not exists asb_type text not null default '';
+alter table properties add column if not exists asb_ref text not null default '';
+alter table properties add column if not exists asb_date text not null default '';
+alter table properties add column if not exists asb_notes text not null default '';
+alter table properties add column if not exists asb_impact text not null default '';
+alter table properties add column if not exists asb_docs text[] not null default '{}';
+alter table properties add column if not exists asb_checked_by text not null default '';
+alter table properties add column if not exists asb_checked_at bigint;
+
+-- Added later: scaffold strike call-offs
+create table if not exists scaffolds (
+  id uuid primary key default gen_random_uuid(),
+  ref_no bigint generated always as identity,
+  property_id uuid not null references properties(id) on delete cascade,
+  contractor_id uuid not null references contractors(id) on delete cascade,
+  strike_date text not null,
+  notes text not null default '',
+  checks text[] not null default '{}',
+  photos text[] not null default '{}',
+  status text not null default 'requested',
+  confirmed_date text not null default '',
+  confirmed_at bigint,
+  scaff_note text not null default '',
+  struck_at bigint,
+  struck_by text not null default '',
+  struck_photos text[] not null default '{}',
+  requested_by text not null default '',
+  requested_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  email_status text not null default 'none',
+  email_error text not null default '',
+  emailed_at bigint,
+  emailed_to text not null default ''
+);
+
 create table if not exists login_attempts (
   id bigint generated always as identity primary key,
   ip text not null,
@@ -96,6 +132,8 @@ create index if not exists properties_project on properties(project_id);
 create index if not exists snags_property on snags(property_id);
 create index if not exists snags_contractor on snags(contractor_id);
 create index if not exists surveys_property on surveys(property_id);
+create index if not exists scaffolds_property on scaffolds(property_id);
+create index if not exists scaffolds_contractor on scaffolds(contractor_id);
 create index if not exists login_attempts_ip on login_attempts(ip, at);
 
 -- Lock every table: only the app's server (using the secret service key) can read or write.
@@ -105,6 +143,7 @@ alter table contractors enable row level security;
 alter table properties enable row level security;
 alter table surveys enable row level security;
 alter table snags enable row level security;
+alter table scaffolds enable row level security;
 alter table login_attempts enable row level security;
 
 -- Private bucket for photos (only the app's server can read it)

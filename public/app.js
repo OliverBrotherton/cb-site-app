@@ -31,7 +31,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- state ---------- */
 const S={token:'',ctoken:'',name:'',role:'',mode:'pm',ready:false,emailReady:false,
- pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),
+ pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),asb:'all',
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
@@ -59,7 +59,7 @@ async function load(){
     try{
       const d=await api('data');
       S.role=d.role;S.emailReady=d.emailReady;
-      for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags]]){S[k]=new Map(list.map(x=>[x.id,x]))}
+      for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
     }catch(e){
@@ -145,12 +145,24 @@ const canManage=()=>S.role==='admin'||S.role==='pm';
 const contractorLink=c=>c&&c.token?location.origin+'/?c='+c.token:'';
 function projectList(){return[...S.projects.values()].sort((a,b)=>a.name.localeCompare(b.name))}
 
+/* ---------- asbestos ---------- */
+const asbStatus=p=>(p&&p.asb_status)||'Not checked';
+function asbPill(p){const s=asbStatus(p);return s==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':s==='No asbestos found'?'<span class="pill p-ok">No asbestos</span>':s==='No survey available'?'<span class="pill p-warn">No asbestos survey</span>':'<span class="pill p-grey">Asbestos not checked</span>'}
+// Red warning shown wherever someone might work at the address
+function asbBanner(p,compact){
+  const s=asbStatus(p);
+  if(s==='Asbestos present')return`<div class="banner" style="background:var(--bad-soft);color:var(--bad)"><b>⚠ Asbestos present.</b> ${esc(p.asb_notes)}${p.asb_impact?` <b>${esc(p.asb_impact)}.</b>`:''} Do not disturb.</div>`;
+  if(compact)return'';
+  if(s==='Not checked'||s==='No survey available')return`<div class="banner"><b>Asbestos ${s==='Not checked'?'not checked yet':'survey not available'}.</b> Check with the PM before disturbing anything.</div>`;
+  return'';
+}
+
 /* ---------- addresses ---------- */
 function openSnagCount(pid){let n=0;for(const s of S.snags.values())if(s.property_id===pid&&s.status!=='closed')n++;return n}
 function sortedProps(){return[...S.props.values()].sort((a,b)=>projectName(a).localeCompare(projectName(b))||(a.postcode||'').localeCompare(b.postcode||'')||(a.address||'').localeCompare(b.address||'',undefined,{numeric:true}))}
 function filteredProps(){
   const q=S.q.trim().toLowerCase();
-  return sortedProps().filter(p=>(S.work==='all'||(p.works||[]).includes(S.work))&&(S.scheme==='all'||(p.project_id||'')===S.scheme)&&(!q||[p.address,p.postcode,p.ref,projectName(p)].join(' ').toLowerCase().includes(q)));
+  return sortedProps().filter(p=>(S.asb==='all'||asbStatus(p)===S.asb||(S.asb==='Not checked'&&asbStatus(p)==='No survey available'))&&(S.work==='all'||(p.works||[]).includes(S.work))&&(S.scheme==='all'||(p.project_id||'')===S.scheme)&&(!q||[p.address,p.postcode,p.ref,projectName(p)].join(' ').toLowerCase().includes(q)));
 }
 function addressesBody(){
   const all=sortedProps();
@@ -160,12 +172,14 @@ function addressesBody(){
   let chips='';
   if(projs.length>1||all.some(p=>!p.project_id))chips+=`<div class="chips">${[['all','All projects'],...projs.map(p=>[p.id,p.name]),...(all.some(p=>!p.project_id)?[['','No project']]:[])].map(([v,l])=>`<button type="button" class="chip-btn" data-act="scheme" data-v="${esc(v)}" aria-pressed="${S.scheme===v}">${esc(l)}</button>`).join('')}</div>`;
   if(worksUsed.length>1)chips+=`<div class="chips">${['all',...worksUsed].map(w=>`<button type="button" class="chip-btn" data-act="work" data-v="${w}" aria-pressed="${S.work===w}">${w==='all'?'All work':WORKS[w]}<span class="n">${w==='all'?all.length:all.filter(p=>(p.works||[]).includes(w)).length}</span></button>`).join('')}</div>`;
+  const asbN=k=>all.filter(p=>asbStatus(p)===k||(k==='Not checked'&&asbStatus(p)==='No survey available')).length;
+  chips+=`<div class="chips">${[['all','Asbestos: all'],['Not checked','Not checked'],['Asbestos present','Asbestos present'],['No asbestos found','No asbestos']].map(([v,l])=>`<button type="button" class="chip-btn" data-act="asb-f" data-v="${v}" aria-pressed="${S.asb===v}">${l}${v==='all'?'':`<span class="n">${asbN(v)}</span>`}</button>`).join('')}</div>`;
   const surveyed=all.filter(p=>p.status&&p.status!=='To survey').length;
   let rows='',last=null;const groups=S.scheme==='all'&&projs.length>1;
   for(const p of list){
     if(groups&&p.project_id!==last){last=p.project_id;rows+=`<div class="group-h">${esc(projectName(p)||'No project')}</div>`}
     const n=openSnagCount(p.id);const st=p.status||'To survey';
-    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end"><span class="pill ${PSTATUS_CLS[st]}">${st}</span>${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
+    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end"><span class="pill ${PSTATUS_CLS[st]}">${st}</span>${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
     rows+=S.selecting?`<label class="row"><input type="checkbox" data-sel="${p.id}" ${S.sel.has(p.id)?'checked':''} style="width:24px;height:24px;accent-color:var(--red);flex:none">${main}</label>`
       :`<button type="button" class="row" data-act="open-prop" data-id="${p.id}">${main}<span class="chev">${I.chev}</span></button>`;
   }
@@ -201,15 +215,24 @@ function propertyBody(){
   if(!p)return`<div class="empty"><h3>This address has been removed</h3><button type="button" class="btn" data-act="back">Back to addresses</button></div>`;
   const st=p.status||'To survey';
   const svs=[...S.surveys.values()].filter(s=>s.property_id===p.id).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  const sc=[...S.scaffolds.values()].filter(x=>x.property_id===p.id).sort((a,b)=>(b.requested_at||0)-(a.requested_at||0));
   const sns=[...S.snags.values()].filter(s=>s.property_id===p.id).sort((a,b)=>((a.status==='closed')-(b.status==='closed'))||(b.raised_at||0)-(a.raised_at||0));
-  return`<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</div></div>
+  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</div></div>
   <div class="field"><span class="lab">Job status</span><div class="seg">${PSTATUS.map(s=>`<button type="button" data-act="set-status" data-v="${s}" aria-pressed="${st===s}">${s}</button>`).join('')}</div></div>
   ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
+  <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">Asbestos</b>${asbPill(p)}</div>
+    ${asbStatus(p)==='Not checked'?`<p class="meta" style="margin:0">Check the asbestos survey for this address before works start.</p>`:`<dl class="kv">${p.asb_type?`<dt>Survey</dt><dd>${esc(p.asb_type)}</dd>`:''}${p.asb_ref?`<dt>Ref</dt><dd>${esc(p.asb_ref)}</dd>`:''}${p.asb_date?`<dt>Dated</dt><dd>${fmtDue(p.asb_date)}</dd>`:''}${p.asb_notes?`<dt>Where</dt><dd>${esc(p.asb_notes)}</dd>`:''}${p.asb_impact?`<dt>Our works</dt><dd>${esc(p.asb_impact)}</dd>`:''}<dt>Checked</dt><dd>${fmtDate(p.asb_checked_at)}${p.asb_checked_by?' by '+esc(p.asb_checked_by):''}</dd></dl>${(p.asb_docs||[]).length?`<div class="photos">${p.asb_docs.map(d=>docThumb(d)).join('')}</div>`:''}`}
+    <button type="button" class="btn ${asbStatus(p)==='Not checked'?'primary':''}" data-act="asb-edit" style="align-self:flex-start">${asbStatus(p)==='Not checked'?'Record asbestos check':'Update asbestos check'}</button>
+  </div>
   <div class="big-actions"><button type="button" class="btn primary" data-act="new-survey">${I.clip} Start survey</button><button type="button" class="btn dark" data-act="new-snag" data-pid="${p.id}">${I.cam} Raise snag</button></div>
   <div class="section-h"><h3>Surveys</h3><span class="meta">${svs.length}</span></div>
   ${svs.length?`<div class="list">${svs.map(s=>{const f=flagsOf(s);return`<button type="button" class="row" data-act="open-survey" data-id="${s.id}"><div class="main"><span class="t">${WORKS[s.type]||s.type} survey</span><span class="s">${esc(s.by_name||'')} · ${fmtDate(s.updated_at)}${f?` · <span style="color:var(--bad);font-weight:700">${f} to check</span>`:''}</span></div><span class="pill ${s.status==='submitted'?'p-ok':'p-warn'}">${s.status==='submitted'?'Submitted':'Draft'}</span><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:`<p class="meta" style="margin:0">No survey yet. Tap <b>Start survey</b> when you're at the door.</p>`}
   <div class="section-h"><h3>Snags</h3><span class="meta">${sns.filter(s=>s.status!=='closed').length} open</span></div>
   ${sns.length?`<div class="list">${sns.map(s=>snagRow(s,false)).join('')}</div>`:`<p class="meta" style="margin:0">No snags at this address.</p>`}
+  <div class="section-h"><h3>Scaffold</h3>${sc.length?`<span class="meta">${sc.length}</span>`:''}</div>
+  ${sc.length?`<div class="list">${sc.map(scaffRow).join('')}</div>`:''}
+  <button type="button" class="btn" data-act="new-scaffold" style="align-self:flex-start">Call off scaffold to be struck</button>
   <button type="button" class="btn" data-act="edit-prop" style="align-self:flex-start">Edit address details</button>`;
 }
 
@@ -316,11 +339,14 @@ function reportsBody(){
   ${rows?`<div class="section-h"><h3>By type of work</h3></div><div class="tbl-wrap"><table><thead><tr><th>Work</th><th class="n">Addresses</th><th class="n">Surveyed</th><th class="n">Complete</th><th class="n">Open snags</th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
   ${ready?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>${ready} snag${ready>1?'s':''} waiting for you to check</b><div class="meta">Marked done by the contractor or trade.</div></div><button type="button" class="btn" data-act="goto-ready">Show them</button></div>`:''}
   ${flagged.length?`<div class="section-h"><h3>Surveys with things to check</h3><span class="meta">${flagged.length}</span></div><div class="list">${flagged.map(s=>{const p=S.props.get(s.property_id)||{};return`<button type="button" class="row" data-act="open-survey" data-id="${s.id}"><div class="main"><span class="t">${esc(p.address||'Unknown')}</span><span class="s">${WORKS[s.type]} · <span style="color:var(--bad);font-weight:700">${flagsOf(s)} flagged</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
+  ${(()=>{const asbN=k=>props.filter(p=>asbStatus(p)===k).length;const nc=asbN('Not checked')+asbN('No survey available');return props.length?`<div class="section-h"><h3>Asbestos</h3></div><div class="tiles"><div class="tile ${nc?'alert':''}"><div class="v">${nc}</div><div class="l">Not checked / no survey</div></div><div class="tile ${asbN('Asbestos present')?'alert':''}"><div class="v">${asbN('Asbestos present')}</div><div class="l">Asbestos present</div></div><div class="tile"><div class="v">${asbN('No asbestos found')}</div><div class="l">No asbestos</div></div><div class="tile"><div class="v">${props.filter(p=>asbStatus(p)==='Asbestos present'&&p.asb_impact==='Removal needed before works').length}</div><div class="l">Need removal first</div></div></div>`:''})()}
+  ${(()=>{const live=[...S.scaffolds.values()].filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
   <div class="section-h"><h3>Download for Excel</h3></div>
   <div style="display:flex;flex-direction:column;gap:10px">
     <button type="button" class="btn block" data-act="export" data-v="snags">${I.dl} Snag register (.csv)</button>
     <button type="button" class="btn block" data-act="export" data-v="surveys">${I.dl} Survey answers (.csv)</button>
-    <button type="button" class="btn block" data-act="export" data-v="props">${I.dl} Address list with status (.csv)</button></div>`;
+    <button type="button" class="btn block" data-act="export" data-v="props">${I.dl} Address list with status and asbestos (.csv)</button>
+    <button type="button" class="btn block" data-act="export" data-v="scaffold">${I.dl} Scaffold call-offs (.csv)</button></div>`;
 }
 
 /* ---------- sheet ---------- */
@@ -332,11 +358,13 @@ function openSheet({title,body,foot,acts={},mount}){
 function closeSheet(){const sh=$('#sheet');sh.hidden=true;sh.innerHTML='';S.sheetActs={};S.photos={};document.body.classList.remove('locked')}
 
 /* photo picker */
-function photoField(key,paths=[]){S.photos[key]=paths.map(path=>({path}));return`<div class="photos" data-photos="${key}">${thumbs(key)}</div>`}
+function photoField(key,paths=[],opts={}){S.photos[key]=paths.map(path=>({path}));S.photos[key].pdf=!!opts.pdf;return`<div class="photos" data-photos="${key}">${thumbs(key)}</div>`}
+const isPdf=p=>/\.pdf$/i.test(p||'');
+function docThumb(path){return isPdf(path)?`<a class="thumb" href="${src(path)}" target="_blank" rel="noopener" style="display:grid;place-items:center;font-weight:700;color:var(--red);text-decoration:none">PDF<br><span class="meta" style="font-weight:400">Open</span></a>`:`<div class="thumb"><img src="${src(path)}" alt="Document page" data-act="view-photo" data-src="${src(path)}"></div>`}
 function thumbs(key){
   const l=S.photos[key]||[];
-  return l.map((p,i)=>`<div class="thumb ${p.pending?'pending':''}"><img src="${p.pending?p.local:src(p.path)}" alt="Photo ${i+1}" ${p.pending?'':`data-act="view-photo" data-src="${src(p.path)}"`}>${p.pending?'':`<button type="button" class="thumb-x" data-act="rm-photo" data-key="${key}" data-i="${i}" aria-label="Remove photo">×</button>`}</div>`).join('')
-   +`<label class="thumb add">${I.cam}<span>Add photo</span><input type="file" accept="image/*" multiple data-photo-input="${key}" aria-label="Add photo"></label>`;
+  return l.map((p,i)=>(p.pdf||isPdf(p.path))?`<div class="thumb ${p.pending?'pending':''}" style="display:grid;place-items:center;font-weight:700;color:var(--red)">PDF${p.pending?'':`<button type="button" class="thumb-x" data-act="rm-photo" data-key="${key}" data-i="${i}" aria-label="Remove file">×</button>`}</div>`:`<div class="thumb ${p.pending?'pending':''}"><img src="${p.pending?p.local:src(p.path)}" alt="Photo ${i+1}" ${p.pending?'':`data-act="view-photo" data-src="${src(p.path)}"`}>${p.pending?'':`<button type="button" class="thumb-x" data-act="rm-photo" data-key="${key}" data-i="${i}" aria-label="Remove photo">×</button>`}</div>`).join('')
+   +`<label class="thumb add">${I.cam}<span>${l.pdf?'Add PDF or photo':'Add photo'}</span><input type="file" accept="${l.pdf?'image/*,application/pdf':'image/*'}" multiple data-photo-input="${key}" aria-label="Add photo"></label>`;
 }
 function refreshThumbs(key){const el=document.querySelector(`[data-photos="${key}"]`);if(el)el.innerHTML=thumbs(key)}
 const photoPaths=key=>(S.photos[key]||[]).filter(p=>p.path).map(p=>p.path);
@@ -358,8 +386,12 @@ document.addEventListener('change',async e=>{
   const inp=e.target.closest&&e.target.closest('[data-photo-input]');if(!inp)return;
   const key=inp.dataset.photoInput;const files=[...inp.files];inp.value='';
   for(const f of files){
-    const item={pending:true,local:URL.createObjectURL(f)};S.photos[key].push(item);refreshThumbs(key);
-    try{const blob=await shrink(f);if(!blob)throw{message:'That photo couldn\'t be read'};const r=await api('uploadPhoto',{data:await toB64(blob),type:'image/jpeg'});item.path=r.path;item.pending=false}
+    const pdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+    const item={pending:true,pdf,local:pdf?'':URL.createObjectURL(f)};S.photos[key].push(item);refreshThumbs(key);
+    try{
+      if(pdf){if(f.size>3*1024*1024)throw{message:'That PDF is over 3 MB. Take photos of the key pages instead.'};const r=await api('uploadPhoto',{data:await toB64(f),type:'application/pdf'});item.path=r.path;item.pending=false}
+      else{const blob=await shrink(f);if(!blob)throw{message:'That photo couldn\'t be read'};const r=await api('uploadPhoto',{data:await toB64(blob),type:'image/jpeg'});item.path=r.path;item.pending=false}
+    }
     catch(err){const l=S.photos[key];if(l)l.splice(l.indexOf(item),1);toast(err.message||'That photo didn\'t upload. Try again.')}
     refreshThumbs(key);
   }
@@ -518,7 +550,7 @@ function newSnagSheet(pid){
   if(!props.length){toast('Add the addresses first, then raise snags against them.');return}
   const fixed=pid&&S.props.get(pid);
   openSheet({title:'Raise a snag',
-   body:(fixed?`<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(fixed.address)}</b> · <span class="mono">${esc(fixed.postcode)}</span></p>`:`<div class="field"><label for="sn-p">Which address?</label><select id="sn-p" class="inp"><option value="">Choose an address…</option>${props.map(p=>`<option value="${p.id}">${esc(p.address)} - ${esc(p.postcode)}</option>`).join('')}</select></div>`)+`
+   body:(fixed?`${asbBanner(fixed,true)}<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(fixed.address)}</b> · <span class="mono">${esc(fixed.postcode)}</span></p>`:`<div class="field"><label for="sn-p">Which address?</label><select id="sn-p" class="inp"><option value="">Choose an address…</option>${props.map(p=>`<option value="${p.id}">${esc(p.address)} - ${esc(p.postcode)}</option>`).join('')}</select></div>`)+`
    <div class="field"><span class="lab">1. Take photos</span>${photoField('snag')}</div>
    <div class="field"><label for="sn-t">2. What's wrong?</label><input id="sn-t" class="inp" placeholder="e.g. Worktop joint not sealed by sink" maxlength="140"></div>
    <div class="field"><label for="sn-l">3. Where?</label><input id="sn-l" class="inp" list="rooms" placeholder="e.g. Kitchen"><datalist id="rooms">${ROOMS.map(r=>`<option value="${r}">`).join('')}</datalist></div>
@@ -598,23 +630,123 @@ function snagSheet(s){
       try{await api('deleteSnag',{id:s.id});await load();closeSheet();toast('Snag deleted')}catch(e){toast(e.message)}}}});
 }
 
+/* ---------- asbestos sheet ---------- */
+function asbSheet(p){
+  const st=asbStatus(p)==='Not checked'?'':asbStatus(p);
+  openSheet({title:'Asbestos check',
+   body:`<p class="meta" style="margin:0">${esc(p.address)} · <span class="mono">${esc(p.postcode)}</span></p>
+   <div class="field"><span class="lab">1. What does the asbestos survey say?</span><div class="opts">${ASB_STATUS.map(x=>`<label class="opt"><input type="radio" name="asb-s" value="${esc(x)}" ${st===x?'checked':''} ${x==='Asbestos present'?'data-flag':''}><span>${esc(x)}</span></label>`).join('')}</div></div>
+   <div id="asb-present" class="field" ${st==='Asbestos present'?'':'hidden'}>
+     <label for="asb-n">2. Where is it and what is it?</label><p class="help">e.g. "Artex ceiling in kitchen. Floor tiles under lino in bathroom."</p><textarea id="asb-n" class="inp" rows="3">${esc(p.asb_notes)}</textarea>
+     <span class="lab" style="margin-top:10px">3. Does it affect our works?</span><div class="opts">${ASB_IMPACT.map(x=>`<label class="opt"><input type="radio" name="asb-i" value="${esc(x)}" ${p.asb_impact===x?'checked':''} ${x==='Removal needed before works'?'data-flag':''}><span>${esc(x)}</span></label>`).join('')}</div>
+   </div>
+   <div class="field"><label for="asb-t">Survey type</label><select id="asb-t" class="inp"><option value="">Not known</option>${ASB_TYPES.map(x=>`<option ${p.asb_type===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+   <div class="field"><label for="asb-r">Survey reference / company</label><input id="asb-r" class="inp" value="${esc(p.asb_ref)}" placeholder="e.g. ACM-2291 / North Surveys Ltd"></div>
+   <div class="field"><label for="asb-d">Survey date</label><input id="asb-d" class="inp" type="date" value="${esc(p.asb_date)}"></div>
+   <div class="field"><span class="lab">Copy of the survey</span><p class="help">The PDF report (up to 3 MB), or photos of the key pages.</p>${photoField('asb',p.asb_docs||[],{pdf:true})}</div>`,
+   foot:`<button type="button" class="btn primary" data-act="asb-save">Save asbestos check</button>`,
+   mount(sh){sh.querySelectorAll('input[name="asb-s"]').forEach(r=>r.addEventListener('change',()=>{$('#asb-present').hidden=r.value!=='Asbestos present'||!r.checked}))},
+   acts:{'asb-save':async b=>{
+     const status=(document.querySelector('input[name="asb-s"]:checked')||{}).value;
+     if(!status){toast('Pick what the asbestos survey says');return}
+     if(photosBusy()){toast('Wait for files to finish uploading');return}
+     b.disabled=true;
+     try{await api('saveAsbestos',{id:p.id,status,notes:$('#asb-n').value,impact:(document.querySelector('input[name="asb-i"]:checked')||{}).value||'',type:$('#asb-t').value,ref:$('#asb-r').value,date:$('#asb-d').value,docs:photoPaths('asb')});await load();closeSheet();toast('Asbestos check saved')}
+     catch(e){b.disabled=false;toast(e.message)}
+   }}});
+}
+
+/* ---------- scaffold strike call-offs ---------- */
+const scaffRef=x=>'SC-'+String(x.ref_no||0).padStart(4,'0');
+const openScaffold=pid=>[...S.scaffolds.values()].some(x=>x.property_id===pid&&(x.status==='requested'||x.status==='confirmed'));
+function scaffRow(x){
+  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=SCAFF[x.status]||SCAFF.requested;
+  const when=x.status==='confirmed'&&x.confirmed_date?x.confirmed_date:x.strike_date;
+  return`<button type="button" class="row" data-act="open-scaffold" data-id="${x.id}"><div class="main"><span class="t">Strike scaffold${S.mode==='contractor'||!S.view?' · '+esc(p.address||''):''}</span><span class="s"><span class="mono">${scaffRef(x)}</span><span>${x.status==='struck'?'Struck '+fmtDate(x.struck_at):'By '+fmtDue(when)}</span>${S.mode==='pm'&&c?`<span>${esc(c.name)}</span>`:''}${S.mode==='pm'&&x.email_status==='failed'?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span></div></button>`;
+}
+function newScaffoldSheet(p){
+  const cs=p.project_id?contractorsOf(p.project_id):[];
+  const scaffs=cs.filter(c=>c.trade==='Scaffolder');const list=scaffs.length?scaffs:cs;
+  if(!list.length){toast('Add the scaffolder to this project first (Projects tab, trade: Scaffolder)');return}
+  const tomorrow=new Date(Date.now()+day).toISOString().slice(0,10);
+  openSheet({title:'Call off scaffold',
+   body:`${asbBanner(p,true)}<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(p.address)}</b> · <span class="mono">${esc(p.postcode)}</span></p>
+   <div class="field"><label for="sf-c">1. Scaffolder</label><select id="sf-c" class="inp">${list.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>${scaffs.length?'':'<p class="help">No contractor on this project has the trade "Scaffolder", so everyone is listed.</p>'}</div>
+   <div class="field"><label for="sf-d">2. Strike on or by</label><input id="sf-d" class="inp" type="date" min="${todayISO()}" value="${tomorrow}"></div>
+   <div class="field"><span class="lab">3. Before calling it off, check</span><div style="display:flex;flex-direction:column;gap:10px">${SCAFF_CHECKS.map((x,i)=>`<label class="check"><input type="checkbox" name="sf-k" value="${esc(x)}"><span>${esc(x)}</span></label>`).join('')}</div></div>
+   <div class="field"><label for="sf-n">Notes for the scaffolder (optional)</label><textarea id="sf-n" class="inp" rows="3" placeholder="e.g. Access via rear lane. Tenant's car on the drive after 5pm."></textarea></div>
+   <div class="field"><span class="lab">Photos (optional)</span>${photoField('sf')}</div>
+   <label class="check"><input type="checkbox" id="sf-mail" checked><span><b>Email the scaffolder now</b><br><span class="meta" id="sf-to"></span></span></label>`,
+   foot:`<button type="button" class="btn primary" data-act="sf-save">Call off scaffold</button>`,
+   mount(sh){const to=()=>{const c=S.contractors.get($('#sf-c').value);const pr=S.projects.get(p.project_id)||{};$('#sf-to').textContent=c?`To ${c.email}${pr.pm_email?', copy to '+pr.pm_email:''}`:''};$('#sf-c',sh).addEventListener('change',to);to()},
+   acts:{'sf-save':async b=>{
+     const checks=[...document.querySelectorAll('input[name="sf-k"]:checked')].map(i=>i.value);
+     if(checks.length<SCAFF_CHECKS.length&&b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`${SCAFF_CHECKS.length-checks.length} check${SCAFF_CHECKS.length-checks.length>1?'s':''} not ticked. Tap again to call off anyway`;return}
+     if(photosBusy()){toast('Wait for photos to finish uploading');return}
+     const sendEmail=$('#sf-mail').checked;b.disabled=true;b.textContent=sendEmail?'Sending…':'Saving…';
+     try{const r=await api('createScaffold',{property_id:p.id,contractor_id:$('#sf-c').value,strike_date:$('#sf-d').value,checks,notes:$('#sf-n').value,photos:photoPaths('sf'),sendEmail});await load();closeSheet();toast(!sendEmail?'Call-off saved':r.scaffold.email_status==='sent'?'Scaffold called off and emailed':'Saved, but the email didn\'t send. Open it to try again.')}
+     catch(e){b.disabled=false;b.textContent='Call off scaffold';toast(e.message)}
+   }}});
+}
+function scaffoldSheet(x){
+  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=SCAFF[x.status]||SCAFF.requested;
+  const gal=ids=>ids&&ids.length?`<div class="gallery">${ids.map(id=>`<img src="${src(id)}" alt="Scaffold photo" data-act="view-photo" data-src="${src(id)}">`).join('')}</div>`:'';
+  const live=x.status==='requested'||x.status==='confirmed';
+  if(S.mode==='contractor'){
+    openSheet({title:scaffRef(x),
+     body:`<span class="pill ${cls}" style="align-self:flex-start">${lab}</span>${asbBanner(p)}
+     <h3 style="font-size:22px">Strike scaffold</h3>
+     <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Strike on</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>You confirmed</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.requested_by?`<dt>Requested by</dt><dd>${esc(x.requested_by)}</dd>`:''}</dl>
+     ${x.notes?`<div class="notes-box">${esc(x.notes)}</div>`:''}${gal(x.photos)}
+     ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
+     ${x.status==='cancelled'?'<div class="banner"><b>Cancelled.</b> Leave the scaffold up.</div>':''}
+     ${x.status==='struck'?`<div class="field"><span class="lab">Your photos</span>${gal(x.struck_photos)}</div>`:''}
+     ${x.status==='requested'?`<div class="section-h"><h3>Confirm your date</h3></div><div class="field"><label for="cf-d">When will you strike it?</label><input id="cf-d" class="inp" type="date" min="${todayISO()}" value="${esc(x.strike_date)}"></div><div class="field"><label for="cf-n">Note (optional)</label><textarea id="cf-n" class="inp" rows="2" placeholder="e.g. Crew there 8am"></textarea></div>`:''}
+     ${live?`<div class="section-h"><h3>When it's down</h3></div><div class="field"><span class="lab">Photo showing the scaffold has gone</span>${photoField('struck')}</div>`:''}`,
+     foot:x.status==='requested'?`<button type="button" class="btn" data-act="cf-ok">Confirm date</button><button type="button" class="btn primary" data-act="cf-struck">Mark as struck</button>`:x.status==='confirmed'?`<button type="button" class="btn primary" data-act="cf-struck">Mark as struck</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
+     acts:{
+      'cf-ok':async b=>{b.disabled=true;try{await api('scaffoldReply',{id:x.id,op:'confirm',date:$('#cf-d').value,note:$('#cf-n').value});await load();closeSheet();toast('Date confirmed. The PM has been told.')}catch(e){b.disabled=false;toast(e.message)}},
+      'cf-struck':async b=>{if(photosBusy()){toast('Wait for photos to finish uploading');return}const ph=photoPaths('struck');if(!ph.length){toast('Add a photo showing the scaffold has gone');return}b.disabled=true;try{await api('scaffoldReply',{id:x.id,op:'struck',photos:ph,note:$('#cf-n')?$('#cf-n').value:''});await load();closeSheet();toast('Marked as struck. The PM has been told.')}catch(e){b.disabled=false;toast(e.message)}}}});
+    return;
+  }
+  openSheet({title:scaffRef(x),
+   body:`<span class="pill ${cls}" style="align-self:flex-start">${lab}</span>
+   <h3 style="font-size:22px">Strike scaffold</h3>
+   ${x.email_status==='sent'?`<div class="email-line sent"><span style="flex:1;min-width:0">Emailed to <b>${esc(x.emailed_to)}</b> ${ago(x.emailed_at)}</span></div>`:x.email_status==='none'?'':`<div class="email-line unsent"><span style="flex:1;min-width:0"><b>Email not sent.</b> ${esc(x.email_error||'')}</span>${S.emailReady?`<button type="button" class="btn" data-act="sf-resend">Send again</button>`:''}</div>`}
+   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Scaffolder</dt><dd>${c?esc(c.name):'Removed'}</dd><dt>You asked for</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>They'll strike</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.struck_at?`<dt>Struck</dt><dd>${fmtDate(x.struck_at)}${x.struck_by?' by '+esc(x.struck_by):''}</dd>`:''}<dt>Called off</dt><dd>${fmtDate(x.requested_at)}${x.requested_by?' by '+esc(x.requested_by):''}</dd></dl>
+   ${(x.checks||[]).length?`<div class="field"><span class="lab">Checked before call-off</span><div class="notes-box">${x.checks.map(esc).join('<br>')}</div></div>`:''}
+   ${x.notes?`<div class="notes-box">${esc(x.notes)}</div>`:''}
+   ${x.scaff_note?`<div class="field"><span class="lab">Scaffolder's note</span><div class="notes-box">${esc(x.scaff_note)}</div></div>`:''}
+   ${gal(x.struck_photos)}`,
+   foot:live?`<button type="button" class="btn danger" data-act="sf-cancel">Cancel call-off</button><button type="button" class="btn primary" data-act="sf-struck">It's struck</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
+   acts:{
+    'sf-resend':async b=>{b.disabled=true;try{const r=await api('scaffoldAction',{id:x.id,op:'resend'});await load();closeSheet();toast(r.scaffold.email_status==='sent'?'Emailed':'The email didn\'t send')}catch(e){b.disabled=false;toast(e.message)}},
+    'sf-struck':async b=>{b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'struck'});await load();closeSheet();toast('Marked as struck')}catch(e){b.disabled=false;toast(e.message)}},
+    'sf-cancel':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap again: the scaffolder is emailed to leave it up';return}b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'cancel'});await load();closeSheet();toast('Call-off cancelled and scaffolder told')}catch(e){b.disabled=false;toast(e.message)}}}});
+}
+
 /* ---------- contractor view ---------- */
 function contractorBody(){
   const all=[...S.snags.values()].sort((a,b)=>((b.priority==='High')-(a.priority==='High'))||(a.raised_at||0)-(b.raised_at||0));
   const cnt={open:0,fixed:0,closed:0};all.forEach(s=>cnt[s.status||'open']++);
   const list=all.filter(s=>(s.status||'open')===S.cF);
+  const scs=[...S.scaffolds.values()].sort((a,b)=>((a.status==='struck'||a.status==='cancelled')-(b.status==='struck'||b.status==='cancelled'))||String(a.strike_date).localeCompare(String(b.strike_date)));
   const F=[['open','To do',cnt.open],['fixed','Done',cnt.fixed],['closed','Signed off',cnt.closed]];
-  return`<div><h1 class="page-title">Your snags</h1><p class="lead">${esc(S.me?S.me.name:'')}${S.projects.size?' · '+esc([...S.projects.values()][0].name):''}</p></div>
-  <div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div class="tile ${cnt.open?'alert':''}"><div class="v">${cnt.open}</div><div class="l">To do</div></div><div class="tile"><div class="v">${cnt.fixed}</div><div class="l">Awaiting check</div></div><div class="tile"><div class="v">${cnt.closed}</div><div class="l">Signed off</div></div></div>
+  const scOnly=!all.length&&scs.length;
+  const snagPart=scOnly?'':`<div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div class="tile ${cnt.open?'alert':''}"><div class="v">${cnt.open}</div><div class="l">To do</div></div><div class="tile"><div class="v">${cnt.fixed}</div><div class="l">Awaiting check</div></div><div class="tile"><div class="v">${cnt.closed}</div><div class="l">Signed off</div></div></div>
   <div class="chips">${F.map(([k,l,n])=>`<button type="button" class="chip-btn" data-act="c-f" data-v="${k}" aria-pressed="${S.cF===k}">${l}<span class="n">${n}</span></button>`).join('')}</div>
-  ${list.length?`<div class="list">${list.map(s=>snagRow(s)).join('')}</div>`:`<div class="empty"><h3>${S.cF==='open'?'Nothing to do':'Nothing here yet'}</h3><p>${S.cF==='open'?'You\'ve no open snags. New ones will show here and land in your email.':'Snags you close out show here.'}</p></div>`}
-  <p class="meta" style="margin:0">To close out a snag: tap it, take a photo of the finished repair, then tap <b>Close out snag</b>. Bookmark this page to come back to it.</p>`;
+  ${list.length?`<div class="list">${list.map(s=>snagRow(s)).join('')}</div>`:`<div class="empty"><h3>${S.cF==='open'?'Nothing to do':'Nothing here yet'}</h3><p>${S.cF==='open'?'You\'ve no open snags. New ones will show here and land in your email.':'Snags you close out show here.'}</p></div>`}`;
+  return`<div><h1 class="page-title">${scOnly?'Your scaffold jobs':scs.length?'Your jobs':'Your snags'}</h1><p class="lead">${esc(S.me?S.me.name:'')}${S.projects.size?' · '+esc([...S.projects.values()][0].name):''}</p></div>
+  ${snagPart}
+  ${scs.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${scs.filter(x=>x.status==='requested'||x.status==='confirmed').length} to do</span></div><div class="list">${scs.map(scaffRow).join('')}</div>`:''}
+  <p class="meta" style="margin:0">${scOnly?'Tap a job to confirm your strike date, then mark it struck with a photo when the scaffold is down.':'To close out a snag: tap it, take a photo of the finished repair, then tap <b>Close out snag</b>.'} Bookmark this page to come back to it.</p>`;
 }
 function contractorSnagSheet(s){
   const p=S.props.get(s.property_id)||{};const [lab,cls]=snagLabel(s);
   const gal=ids=>ids&&ids.length?`<div class="gallery">${ids.map(id=>`<img src="${src(id)}" alt="Snag photo" data-act="view-photo" data-src="${src(id)}">`).join('')}</div>`:'<p class="meta" style="margin:0">No photos.</p>';
   openSheet({title:snagRef(s),
    body:`<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill ${cls}">${lab}</span>${s.priority==='High'?'<span class="pill p-bad">High priority</span>':''}${isOverdue(s)?'<span class="pill p-bad">Overdue</span>':''}</div>
+   ${asbBanner(p)}
    ${s.reopen_reason&&s.status==='open'?`<div class="banner"><b>Sent back:</b> ${esc(s.reopen_reason)}</div>`:''}
    <h3 style="font-size:22px">${esc(s.title)}</h3>
    ${gal(s.photos)}
@@ -642,8 +774,10 @@ function exportCsv(kind){
     [...S.snags.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(s=>{const p=P(s.property_id);const c=S.contractors.get(s.contractor_id);rows.push([snagRef(s),p.address,p.postcode,projectName(p),s.title,s.location,c?c.name:'Own team',s.trade,s.priority,(SNAG[s.status]||SNAG.open)[0],fmtDate(s.raised_at),s.raised_by,fmtDue(s.due),fmtDate(s.fixed_at),s.status==='closed'?fmtDate(s.closed_at):'',isOverdue(s)?'Yes':'',s.notes,(s.photos||[]).length])})}
   else if(kind==='surveys'){name=`survey-answers-${d}.csv`;rows=[['Address','Postcode','Project','Survey','Status','Date','Surveyor','Section','Question','Answer','Flag']];
     [...S.surveys.values()].forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
-  else{name=`addresses-${d}.csv`;rows=[['UPRN / ref','Address','Postcode','Project','Work','Status','Open snags','Access notes']];
-    sortedProps().forEach(p=>rows.push([p.ref,p.address,p.postcode,projectName(p),(p.works||[]).map(w=>WORKS[w]).join('; '),p.status,openSnagCount(p.id),p.notes]))}
+  else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Scaffolder','Status','Strike requested for','Confirmed date','Struck','Called off','Called off by','Checks done','Notes']];
+    [...S.scaffolds.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),p.address,p.postcode,projectName(p),c?c.name:'',(SCAFF[x.status]||SCAFF.requested)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
+  else{name=`addresses-${d}.csv`;rows=[['UPRN / ref','Address','Postcode','Project','Work','Status','Open snags','Asbestos','Asbestos where','Affects works','Asbestos survey ref','Asbestos survey date','Access notes']];
+    sortedProps().forEach(p=>rows.push([p.ref,p.address,p.postcode,projectName(p),(p.works||[]).map(w=>WORKS[w]).join('; '),p.status,openSnagCount(p.id),asbStatus(p),p.asb_notes,p.asb_impact,p.asb_ref,fmtDue(p.asb_date),p.notes]))}
   if(rows.length<2){toast('Nothing to download yet');return}
   const url=URL.createObjectURL(new Blob(['﻿'+csv(rows)],{type:'text/csv'}));
   const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
@@ -680,6 +814,10 @@ document.addEventListener('click',e=>{
     case'open-project':projectSheet(S.projects.get(t.dataset.id));break;
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
+    case'asb-f':S.asb=t.dataset.v;renderBody();break;
+    case'asb-edit':asbSheet(S.props.get(S.view.id));break;
+    case'new-scaffold':newScaffoldSheet(S.props.get(S.view.id));break;
+    case'open-scaffold':{const x=S.scaffolds.get(t.dataset.id);if(x)scaffoldSheet(x);break}
     case'open-pm':pmSheet(S.pms.get(t.dataset.id));break;
     case'change-name':nameSheet();break;
     case'sign-out':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again: you\'ll need the PIN to get back in';return}signOut();break;
