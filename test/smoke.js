@@ -300,6 +300,21 @@ try {
   ok((await api('saveProject', { name: 'X', pin: '123123' }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot create projects');
   ok((await api('savePm', { name: 'X', pin: '123124' }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot create other PMs');
 
+  // ---------- bulk delete ----------
+  const staffDel = await api('deleteProperties', { ids: [d0.projects[0].id] }, { authorization: 'Bearer ' + sTok });
+  ok(staffDel.ok === false, 'site team cannot bulk delete');
+  const pmDel = await api('deleteProperties', { ids: (await api('data', {}, { authorization: 'Bearer ' + tok })).data.properties.map(p => p.id) }, { authorization: 'Bearer ' + pmTok });
+  ok(pmDel.ok === false, 'PM cannot delete another PM\'s addresses');
+  await admin.reload(); await admin.waitForSelector('#vbody'); await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=scheme] >> text=Bradford Roofing 2026');
+  await admin.click('[data-act=sel-start]');
+  await admin.click('[data-act=sel-all]');
+  await admin.click('[data-act=del-go]');
+  ok((await admin.textContent('[data-act=del-go]')).includes('Tap again'), 'bulk delete asks to confirm');
+  await admin.click('[data-act=del-go]');
+  await toastHas(admin, 'Deleted 1 address');
+  ok((await api('data', {}, { authorization: 'Bearer ' + tok })).data.properties.length === 2, 'project\'s addresses deleted, others kept');
+
   // ---------- PIN brute force is blocked ----------
   let last;
   for (let i = 0; i < 9; i++) last = await api('login', { pin: String(100000 + i) });
