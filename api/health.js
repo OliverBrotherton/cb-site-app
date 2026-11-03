@@ -23,6 +23,18 @@ export default async function handler(req, res) {
     database: 'not checked', photo_storage: 'not checked',
     email: emailMethod(env) ? `set up (${emailMethod(env)})` : 'not set up yet (snags show "Not emailed" until it is)',
   };
+  // Which Microsoft 365 email settings this deployment can see (yes/no only)
+  const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const seen = k => (env[k] || '').trim();
+  const similar = Object.keys(env).filter(k => /^(MS|MAIL|SMTP)_/i.test(k) && !['MS_TENANT_ID', 'MS_CLIENT_ID', 'MS_CLIENT_SECRET', 'MAIL_FROM', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'].includes(k));
+  if (!emailMethod(env)) out.email_settings = {
+    MS_TENANT_ID: !seen('MS_TENANT_ID') ? 'missing' : guid.test(seen('MS_TENANT_ID')) ? 'set' : 'WRONG: should look like bd262d4b-b8cd-...',
+    MS_CLIENT_ID: !seen('MS_CLIENT_ID') ? 'missing' : guid.test(seen('MS_CLIENT_ID')) ? 'set' : 'WRONG: should look like c5447c8b-51f2-...',
+    MS_CLIENT_SECRET: !seen('MS_CLIENT_SECRET') ? 'missing' : guid.test(seen('MS_CLIENT_SECRET')) ? 'WRONG: this looks like the Secret ID, use the secret Value' : 'set',
+    MAIL_FROM: !seen('MAIL_FROM') ? 'missing' : /@/.test(seen('MAIL_FROM')) ? 'set' : 'WRONG: should be Chas Berger Snags <snags@chasberger.co.uk>',
+    ...(similar.length ? { misspelt_names_found: similar.join(', ') } : {}),
+    deployment: env.VERCEL_ENV || 'unknown',
+  };
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
     const { store } = getApp();
     try {
@@ -34,7 +46,7 @@ export default async function handler(req, res) {
     try { await store.photoUrl('health-check/none.jpg'); out.photo_storage = 'OK'; }
     catch (e) { out.photo_storage = /bucket/i.test(e.message) ? 'WRONG: photos bucket missing, run supabase/schema.sql again' : /not found|Object not found/i.test(e.message) ? 'OK' : 'ERROR: ' + e.message; }
   } else out.database = 'WRONG: running without a database. Nothing is being saved. Add SUPABASE_URL and SUPABASE_SERVICE_KEY, then redeploy';
-  out.all_good = Object.values(out).every(v => !/^(WRONG|ERROR|missing)/.test(v));
+  out.all_good = Object.values(out).every(v => typeof v !== 'string' || !/^(WRONG|ERROR|missing)/.test(v));
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json(out);
 }
