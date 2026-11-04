@@ -40,8 +40,19 @@ export default async function handler(req, res) {
     try {
       await store.select('projects', { id: '00000000-0000-0000-0000-000000000000' });
       const z = '00000000-0000-0000-0000-000000000000';
-      try { await store.select('pms', { id: z }); await store.select('projects', { pm_id: z }); await store.select('scaffolds', { id: z }); await store.select('properties', { asb_status: 'x' }); out.database = 'OK'; }
-      catch { out.database = 'WRONG: database needs updating for the latest features. Run supabase/schema.sql again in the Supabase SQL Editor'; }
+      // Every column the app writes, table by table
+      const COLS = {
+        pms: ['id', 'name', 'email', 'pin'],
+        projects: ['id', 'name', 'pm_email', 'pin', 'pm_id'],
+        contractors: ['id', 'project_id', 'name', 'email', 'trade', 'token'],
+        properties: ['id', 'project_id', 'ref', 'address', 'postcode', 'works', 'status', 'notes', 'asb_status', 'asb_type', 'asb_ref', 'asb_date', 'asb_notes', 'asb_impact', 'asb_docs', 'asb_checked_by', 'asb_checked_at'],
+        snags: ['id', 'ref_no', 'property_id', 'contractor_id', 'title', 'photos', 'fix_photos', 'status', 'email_status', 'emailed_to'],
+        scaffolds: ['id', 'ref_no', 'property_id', 'contractor_id', 'strike_date', 'notes', 'checks', 'photos', 'status', 'confirmed_date', 'confirmed_at', 'scaff_note', 'struck_at', 'struck_by', 'struck_photos', 'requested_by', 'requested_at', 'email_status', 'email_error', 'emailed_at', 'emailed_to'],
+        surveys: ['id', 'property_id', 'type', 'answers', 'photos', 'status'],
+      };
+      const problems = [];
+      for (const [t, cols] of Object.entries(COLS)) { try { await store.checkColumns(t, cols); } catch (e) { problems.push(t + ': ' + e.message); } }
+      out.database = problems.length ? 'WRONG: ' + problems.join(' | ') + '. Run supabase/schema.sql again, then run: NOTIFY pgrst, \'reload schema\';' : 'OK';
     }
     catch (e) { out.database = /does not exist|schema cache/i.test(e.message) ? 'WRONG: tables missing, run supabase/schema.sql in the Supabase SQL Editor' : /Invalid API key|JWT|apikey/i.test(e.message) ? 'WRONG: Supabase rejected the key' : 'ERROR: ' + e.message; }
     try { await store.photoUrl('health-check/none.jpg'); out.photo_storage = 'OK'; }

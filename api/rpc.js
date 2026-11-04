@@ -10,6 +10,6 @@ export default async function handler(req, res) {
   } catch (e) {
     if (!e.status) console.error(e);
     const setup = !e.status && /Invalid API key|JWT|apikey|does not exist|schema cache|bucket|column/i.test(e.message || '');
-    res.status(e.status || 500).json({ ok: false, error: e.status ? e.message : setup ? 'The database needs updating. Run supabase/schema.sql again in Supabase (SQL Editor), then try again.' : 'Something went wrong on the server. Try again.' });
+    res.status(e.status || 500).json({ ok: false, error: e.status ? e.message : setup ? 'Database problem: ' + String(e.message || '').slice(0, 160) + '. Send this message to Oliver.' : 'Something went wrong on the server. Try again.' });
   }
 }
