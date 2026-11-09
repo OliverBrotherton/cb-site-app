@@ -121,6 +121,23 @@ create table if not exists scaffolds (
   emailed_to text not null default ''
 );
 
+-- Added later: delays on each address
+create table if not exists delays (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references properties(id) on delete cascade,
+  reason text not null,
+  cause text not null default '',
+  started text not null,
+  ended text not null default '',
+  notes text not null default '',
+  photos text[] not null default '{}',
+  status text not null default 'open',
+  logged_by text not null default '',
+  logged_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  resolved_by text not null default '',
+  resolved_at bigint
+);
+
 create table if not exists login_attempts (
   id bigint generated always as identity primary key,
   ip text not null,
@@ -134,6 +151,7 @@ create index if not exists snags_contractor on snags(contractor_id);
 create index if not exists surveys_property on surveys(property_id);
 create index if not exists scaffolds_property on scaffolds(property_id);
 create index if not exists scaffolds_contractor on scaffolds(contractor_id);
+create index if not exists delays_property on delays(property_id);
 create index if not exists login_attempts_ip on login_attempts(ip, at);
 
 -- Lock every table: only the app's server (using the secret service key) can read or write.
@@ -144,9 +162,13 @@ alter table properties enable row level security;
 alter table surveys enable row level security;
 alter table snags enable row level security;
 alter table scaffolds enable row level security;
+alter table delays enable row level security;
 alter table login_attempts enable row level security;
 
 -- Private bucket for photos (only the app's server can read it)
 insert into storage.buckets (id, name, public)
 values ('photos', 'photos', false)
 on conflict (id) do nothing;
+
+-- Make the app see any new tables and columns straight away
+notify pgrst, 'reload schema';

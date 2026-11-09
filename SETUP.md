@@ -67,7 +67,7 @@ Projects tab > **Add a project manager**: name, work email and a PIN (one is mad
 If `/api/health` says the database needs updating, open `supabase/schema.sql` on GitHub, copy it, paste it into the Supabase SQL Editor and click **Run**. It's safe to run again and never deletes data.
 
 ## Changing survey questions
-They're in `public/questions.js`. Send Claude the filled-in Survey Questions template and it updates the file.
+They're in `public/questions.js`. After changing them, run `python3 tools/build_templates.py` so the Survey Questions template on the site (Progress tab > Templates) matches. The other two templates are rebuilt by the same script.
 
 ## Testing locally (for whoever maintains it)
 `npm install`, then `npm run dev` (admin PIN `999999`, data kept in memory) and `npm test` for the full browser check.

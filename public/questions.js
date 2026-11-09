@@ -54,3 +54,5 @@ const ASB_TYPES=['Management survey','Refurbishment & demolition (R&D)','Asbesto
 const ASB_IMPACT=['Removal needed before works','Work around it (no disturbance)','Doesn\'t affect our works'];
 const SCAFF_CHECKS=['All work at height finished','Roof / elevations signed off','Snags at height closed','Tenant told','Materials and waste cleared'];
 const SCAFF={requested:['Requested','p-warn'],confirmed:['Date confirmed','p-info'],struck:['Struck','p-ok'],cancelled:['Cancelled','p-grey']};
+const DELAY_REASONS=['No access - tenant not in','Tenant refused works','Tenant illness / vulnerability','Asbestos found / awaiting removal','Structural issue found','Materials not delivered','Subcontractor didn\'t attend','Weather','Waiting for client instruction / variation','Utilities (gas, electric, water)','Other'];
+const DELAY_CAUSES=['Tenant','Client','Chas Berger','Subcontractor','Weather / unforeseen'];

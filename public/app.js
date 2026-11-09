@@ -31,7 +31,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- state ---------- */
 const S={token:'',ctoken:'',name:'',role:'',mode:'pm',ready:false,emailReady:false,
- pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),asb:'all',
+ pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),asb:'all',delayF:false,
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
@@ -59,7 +59,7 @@ async function load(){
     try{
       const d=await api('data');
       S.role=d.role;S.emailReady=d.emailReady;
-      for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
+      for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]],['delays',d.delays||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
     }catch(e){
@@ -145,6 +145,48 @@ const canManage=()=>S.role==='admin'||S.role==='pm';
 const contractorLink=c=>c&&c.token?location.origin+'/?c='+c.token:'';
 function projectList(){return[...S.projects.values()].sort((a,b)=>a.name.localeCompare(b.name))}
 
+/* ---------- delays ---------- */
+const isoDay=iso=>new Date(iso+'T12:00').getTime();
+// Calendar days lost, counting the start and end day
+function delayDays(d){if(!d.started)return 0;const end=d.ended?isoDay(d.ended):isoDay(todayISO());return Math.max(1,Math.round((end-isoDay(d.started))/day)+1)}
+const delaysOf=pid=>[...S.delays.values()].filter(d=>d.property_id===pid).sort((a,b)=>((a.status==='resolved')-(b.status==='resolved'))||String(b.started).localeCompare(String(a.started)));
+const openDelay=pid=>[...S.delays.values()].some(d=>d.property_id===pid&&d.status!=='resolved');
+function delayRow(d,showAddr){
+  const p=S.props.get(d.property_id)||{};const open=d.status!=='resolved';const n=delayDays(d);
+  return`<button type="button" class="row" data-act="open-delay" data-id="${d.id}"><div class="main"><span class="t">${esc(d.reason)}${showAddr?' · '+esc(p.address||''):''}</span><span class="s"><span>${fmtDue(d.started)} to ${d.ended?fmtDue(d.ended):'ongoing'}</span>${d.cause?`<span class="tag">${esc(d.cause)}</span>`:''}${d.logged_by?`<span>${esc(d.logged_by)}</span>`:''}</span></div><div class="end"><span class="pill ${open?'p-warn':'p-grey'}">${open?'Ongoing':'Resolved'}</span><span class="meta" style="font-weight:700">${n} day${n>1?'s':''}</span></div></button>`;
+}
+function delaySheet(p,d){
+  d=d||{reason:'',cause:'',started:todayISO(),ended:'',notes:'',photos:[]};
+  openSheet({title:d.id?'Delay':'Log a delay',
+   body:`<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(p.address)}</b> · <span class="mono">${esc(p.postcode)}</span></p>
+   <div class="field"><label for="dl-r">1. What's causing the delay?</label><select id="dl-r" class="inp"><option value="">Choose a reason…</option>${DELAY_REASONS.map(x=>`<option ${d.reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+   <div class="field"><span class="lab">2. Whose responsibility is it?</span><p class="help">Used for extension-of-time claims.</p><div class="opts">${DELAY_CAUSES.map(x=>`<label class="opt"><input type="radio" name="dl-c" value="${esc(x)}" ${d.cause===x?'checked':''}><span>${esc(x)}</span></label>`).join('')}</div></div>
+   <div class="field"><label for="dl-s">3. Started</label><input id="dl-s" class="inp" type="date" value="${esc(d.started)}" max="${todayISO()}"></div>
+   <label class="check"><input type="checkbox" id="dl-on" ${d.ended?'':'checked'}><span><b>Still ongoing</b><br><span class="meta">Untick and add the end date when it's sorted.</span></span></label>
+   <div class="field" id="dl-e-wrap" ${d.ended?'':'hidden'}><label for="dl-e">Ended</label><input id="dl-e" class="inp" type="date" value="${esc(d.ended)}" max="${todayISO()}"></div>
+   <p class="meta" id="dl-days" style="margin:0"></p>
+   <div class="field"><label for="dl-n">Notes</label><p class="help">What happened, who you spoke to, what's needed to get going again.</p><textarea id="dl-n" class="inp" rows="4" placeholder="e.g. Called tenant 3 times, card left. Housing officer asked to help.">${esc(d.notes)}</textarea></div>
+   <div class="field"><span class="lab">Evidence photos (optional)</span><p class="help">e.g. calling card left, blocked access, damage found.</p>${photoField('dl',d.photos||[])}</div>
+   ${d.id?`<p class="meta" style="margin:0">Logged ${fmtDate(d.logged_at)}${d.logged_by?' by '+esc(d.logged_by):''}${d.resolved_at&&d.status==='resolved'?` · resolved ${fmtDate(d.resolved_at)}${d.resolved_by?' by '+esc(d.resolved_by):''}`:''}</p><button type="button" class="btn danger" data-act="dl-del" style="align-self:flex-start">Delete this delay</button>`:''}`,
+   foot:`<button type="button" class="btn primary" data-act="dl-save">${d.id?'Save':'Log delay'}</button>`,
+   mount(sh){
+     const upd=()=>{const on=$('#dl-on').checked;$('#dl-e-wrap').hidden=on;const x={started:$('#dl-s').value,ended:on?'':$('#dl-e').value};$('#dl-days').textContent=x.started?`${delayDays(x)} calendar day${delayDays(x)>1?'s':''} lost${on?' so far':''}`:''};
+     ['#dl-on','#dl-s','#dl-e'].forEach(q=>$(q,sh).addEventListener('change',upd));
+     $('#dl-on',sh).addEventListener('change',()=>{if(!$('#dl-on').checked&&!$('#dl-e').value){$('#dl-e').value=todayISO();upd()}});upd();
+   },
+   acts:{
+    'dl-save':async b=>{
+      const reason=$('#dl-r').value;if(!reason){toast('Pick the reason for the delay');return}
+      if(photosBusy()){toast('Wait for photos to finish uploading');return}
+      const ended=$('#dl-on').checked?'':$('#dl-e').value;
+      b.disabled=true;
+      try{await api('saveDelay',{id:d.id,property_id:p.id,reason,cause:(document.querySelector('input[name="dl-c"]:checked')||{}).value||'',started:$('#dl-s').value,ended,notes:$('#dl-n').value,photos:photoPaths('dl')});await load();closeSheet();toast(d.id?'Delay saved':'Delay logged')}
+      catch(e){b.disabled=false;toast(e.message)}
+    },
+    'dl-del':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap again to delete it';setTimeout(()=>{if(b.isConnected){b.dataset.armed='';b.textContent='Delete this delay'}},4000);return}
+      try{await api('deleteDelay',{id:d.id});await load();closeSheet();toast('Delay deleted')}catch(e){toast(e.message)}}}});
+}
+
 /* ---------- asbestos ---------- */
 const asbStatus=p=>(p&&p.asb_status)||'Not checked';
 function asbPill(p){const s=asbStatus(p);return s==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':s==='No asbestos found'?'<span class="pill p-ok">No asbestos</span>':s==='No survey available'?'<span class="pill p-warn">No asbestos survey</span>':'<span class="pill p-grey">Asbestos not checked</span>'}
@@ -162,7 +204,7 @@ function openSnagCount(pid){let n=0;for(const s of S.snags.values())if(s.propert
 function sortedProps(){return[...S.props.values()].sort((a,b)=>projectName(a).localeCompare(projectName(b))||(a.postcode||'').localeCompare(b.postcode||'')||(a.address||'').localeCompare(b.address||'',undefined,{numeric:true}))}
 function filteredProps(){
   const q=S.q.trim().toLowerCase();
-  return sortedProps().filter(p=>(S.asb==='all'||asbStatus(p)===S.asb||(S.asb==='Not checked'&&asbStatus(p)==='No survey available'))&&(S.work==='all'||(p.works||[]).includes(S.work))&&(S.scheme==='all'||(p.project_id||'')===S.scheme)&&(!q||[p.address,p.postcode,p.ref,projectName(p)].join(' ').toLowerCase().includes(q)));
+  return sortedProps().filter(p=>(!S.delayF||openDelay(p.id))&&(S.asb==='all'||asbStatus(p)===S.asb||(S.asb==='Not checked'&&asbStatus(p)==='No survey available'))&&(S.work==='all'||(p.works||[]).includes(S.work))&&(S.scheme==='all'||(p.project_id||'')===S.scheme)&&(!q||[p.address,p.postcode,p.ref,projectName(p)].join(' ').toLowerCase().includes(q)));
 }
 function addressesBody(){
   const all=sortedProps();
@@ -173,13 +215,13 @@ function addressesBody(){
   if(projs.length>1||all.some(p=>!p.project_id))chips+=`<div class="chips">${[['all','All projects'],...projs.map(p=>[p.id,p.name]),...(all.some(p=>!p.project_id)?[['','No project']]:[])].map(([v,l])=>`<button type="button" class="chip-btn" data-act="scheme" data-v="${esc(v)}" aria-pressed="${S.scheme===v}">${esc(l)}</button>`).join('')}</div>`;
   if(worksUsed.length>1)chips+=`<div class="chips">${['all',...worksUsed].map(w=>`<button type="button" class="chip-btn" data-act="work" data-v="${w}" aria-pressed="${S.work===w}">${w==='all'?'All work':WORKS[w]}<span class="n">${w==='all'?all.length:all.filter(p=>(p.works||[]).includes(w)).length}</span></button>`).join('')}</div>`;
   const asbN=k=>all.filter(p=>asbStatus(p)===k||(k==='Not checked'&&asbStatus(p)==='No survey available')).length;
-  chips+=`<div class="chips">${[['all','Asbestos: all'],['Not checked','Not checked'],['Asbestos present','Asbestos present'],['No asbestos found','No asbestos']].map(([v,l])=>`<button type="button" class="chip-btn" data-act="asb-f" data-v="${v}" aria-pressed="${S.asb===v}">${l}${v==='all'?'':`<span class="n">${asbN(v)}</span>`}</button>`).join('')}</div>`;
+  chips+=`<div class="chips">${[['all','Asbestos: all'],['Not checked','Not checked'],['Asbestos present','Asbestos present'],['No asbestos found','No asbestos']].map(([v,l])=>`<button type="button" class="chip-btn" data-act="asb-f" data-v="${v}" aria-pressed="${S.asb===v}">${l}${v==='all'?'':`<span class="n">${asbN(v)}</span>`}</button>`).join('')}<button type="button" class="chip-btn" data-act="delay-f" aria-pressed="${S.delayF}">Delayed<span class="n">${all.filter(p=>openDelay(p.id)).length}</span></button></div>`;
   const surveyed=all.filter(p=>p.status&&p.status!=='To survey').length;
   let rows='',last=null;const groups=S.scheme==='all'&&projs.length>1;
   for(const p of list){
     if(groups&&p.project_id!==last){last=p.project_id;rows+=`<div class="group-h">${esc(projectName(p)||'No project')}</div>`}
     const n=openSnagCount(p.id);const st=p.status||'To survey';
-    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end"><span class="pill ${PSTATUS_CLS[st]}">${st}</span>${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
+    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end"><span class="pill ${PSTATUS_CLS[st]}">${st}</span>${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${openDelay(p.id)?'<span class="pill p-warn">Delayed</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
     rows+=S.selecting?`<label class="row"><input type="checkbox" data-sel="${p.id}" ${S.sel.has(p.id)?'checked':''} style="width:24px;height:24px;accent-color:var(--red);flex:none">${main}</label>`
       :`<button type="button" class="row" data-act="open-prop" data-id="${p.id}">${main}<span class="chev">${I.chev}</span></button>`;
   }
@@ -215,9 +257,10 @@ function propertyBody(){
   if(!p)return`<div class="empty"><h3>This address has been removed</h3><button type="button" class="btn" data-act="back">Back to addresses</button></div>`;
   const st=p.status||'To survey';
   const svs=[...S.surveys.values()].filter(s=>s.property_id===p.id).sort((a,b)=>(b.updated_at||0)-(a.updated_at||0));
+  const dls=delaysOf(p.id);
   const sc=[...S.scaffolds.values()].filter(x=>x.property_id===p.id).sort((a,b)=>(b.requested_at||0)-(a.requested_at||0));
   const sns=[...S.snags.values()].filter(s=>s.property_id===p.id).sort((a,b)=>((a.status==='closed')-(b.status==='closed'))||(b.raised_at||0)-(a.raised_at||0));
-  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</div></div>
+  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}${openDelay(p.id)?`<span class="pill p-warn">Delayed ${delaysOf(p.id).filter(d=>d.status!=='resolved').reduce((n,d)=>n+delayDays(d),0)} days</span>`:''}</div></div>
   <div class="field"><span class="lab">Job status</span><div class="seg">${PSTATUS.map(s=>`<button type="button" data-act="set-status" data-v="${s}" aria-pressed="${st===s}">${s}</button>`).join('')}</div></div>
   ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
   <div class="panel" style="display:flex;flex-direction:column;gap:10px">
@@ -233,6 +276,9 @@ function propertyBody(){
   <div class="section-h"><h3>Scaffold</h3>${sc.length?`<span class="meta">${sc.length}</span>`:''}</div>
   ${sc.length?`<div class="list">${sc.map(scaffRow).join('')}</div>`:''}
   <button type="button" class="btn" data-act="new-scaffold" style="align-self:flex-start">Call off scaffold to be struck</button>
+  <div class="section-h"><h3>Delays</h3>${dls.length?`<span class="meta">${dls.reduce((n,d)=>n+delayDays(d),0)} days lost</span>`:''}</div>
+  ${dls.length?`<div class="list">${dls.map(d=>delayRow(d,false)).join('')}</div>`:''}
+  <button type="button" class="btn" data-act="new-delay" style="align-self:flex-start">Log a delay</button>
   <button type="button" class="btn" data-act="edit-prop" style="align-self:flex-start">Edit address details</button>`;
 }
 
@@ -342,13 +388,29 @@ function reportsBody(){
   ${flagged.length?`<div class="section-h"><h3>Surveys with things to check</h3><span class="meta">${flagged.length}</span></div><div class="list">${flagged.map(s=>{const p=S.props.get(s.property_id)||{};return`<button type="button" class="row" data-act="open-survey" data-id="${s.id}"><div class="main"><span class="t">${esc(p.address||'Unknown')}</span><span class="s">${WORKS[s.type]} · <span style="color:var(--bad);font-weight:700">${flagsOf(s)} flagged</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
   ${(()=>{const asbN=k=>props.filter(p=>asbStatus(p)===k).length;const nc=asbN('Not checked')+asbN('No survey available');return props.length?`<div class="section-h"><h3>Asbestos</h3></div><div class="tiles"><div class="tile ${nc?'alert':''}"><div class="v">${nc}</div><div class="l">Not checked / no survey</div></div><div class="tile ${asbN('Asbestos present')?'alert':''}"><div class="v">${asbN('Asbestos present')}</div><div class="l">Asbestos present</div></div><div class="tile"><div class="v">${asbN('No asbestos found')}</div><div class="l">No asbestos</div></div><div class="tile"><div class="v">${props.filter(p=>asbStatus(p)==='Asbestos present'&&p.asb_impact==='Removal needed before works').length}</div><div class="l">Need removal first</div></div></div>`:''})()}
   ${(()=>{const live=[...S.scaffolds.values()].filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
+  ${(()=>{const ds=[...S.delays.values()];if(!ds.length)return'';const open=ds.filter(d=>d.status!=='resolved');const lost=ds.reduce((n,d)=>n+delayDays(d),0);
+    const by=(k,list)=>list.map(v=>{const x=ds.filter(d=>(d[k]||'Not set')===v);return x.length?`<tr><td>${esc(v)}</td><td class="n">${x.length}</td><td class="n">${x.reduce((n,d)=>n+delayDays(d),0)}</td></tr>`:''}).join('');
+    return`<div class="section-h"><h3>Delays</h3></div><div class="tiles"><div class="tile ${open.length?'alert':''}"><div class="v">${open.length}</div><div class="l">Ongoing delays</div></div><div class="tile"><div class="v">${lost}</div><div class="l">Days lost in total</div></div><div class="tile"><div class="v">${new Set(ds.map(d=>d.property_id)).size}</div><div class="l">Addresses delayed</div></div><div class="tile"><div class="v">${ds.filter(d=>d.cause==='Tenant'||d.cause==='Client').reduce((n,d)=>n+delayDays(d),0)}</div><div class="l">Days down to tenant or client</div></div></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Who's responsible</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('cause',[...DELAY_CAUSES,'Not set'])}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Reason</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('reason',DELAY_REASONS)}</tbody></table></div>
+    ${open.length?`<div class="list">${open.sort((a,b)=>String(a.started).localeCompare(String(b.started))).map(d=>delayRow(d,true)).join('')}</div>`:''}`})()}
   <div class="section-h"><h3>Download for Excel</h3></div>
   <div style="display:flex;flex-direction:column;gap:10px">
     <button type="button" class="btn block" data-act="export" data-v="snags">${I.dl} Snag register (.csv)</button>
     <button type="button" class="btn block" data-act="export" data-v="surveys">${I.dl} Survey answers (.csv)</button>
     <button type="button" class="btn block" data-act="export" data-v="props">${I.dl} Address list with status and asbestos (.csv)</button>
-    <button type="button" class="btn block" data-act="export" data-v="scaffold">${I.dl} Scaffold call-offs (.csv)</button></div>`;
+    <button type="button" class="btn block" data-act="export" data-v="scaffold">${I.dl} Scaffold call-offs (.csv)</button>
+    <button type="button" class="btn block" data-act="export" data-v="delays">${I.dl} Delays log (.csv)</button></div>
+  ${templatesPanel()}`;
 }
+
+/* ---------- templates ---------- */
+const TEMPLATE_FILES=[
+  ['CB Site App - Address Upload Template.xlsx','Address upload','Fill in and upload under Addresses > Add addresses.'],
+  ['CB Site App - Survey Questions Template.xlsx','Survey questions','The current survey questions. Mark up changes and send it back to get the surveys updated.'],
+  ['CB Site App - Projects and Contractors Setup.xlsx','Projects & contractors setup','Gather PINs, emails and contractors before setting up a project.']];
+const templateUrl=f=>'/templates/'+encodeURIComponent(f);
+function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list">${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
 
 /* ---------- sheet ---------- */
 function openSheet({title,body,foot,acts={},mount}){
@@ -457,7 +519,7 @@ function addAddressesSheet(){
   };
   openSheet({title:'Add addresses',
    body:`<div class="field"><label for="imp-proj">1. Which project?</label><select id="imp-proj" class="inp">${projs.map(pr=>`<option value="${pr.id}" ${S.scheme===pr.id?'selected':''}>${esc(pr.name)}</option>`).join('')}${S.role==='admin'?'<option value="">No project</option>':''}</select></div>
-   <div class="field"><span class="lab">2. Upload the Excel template</span><label class="btn" style="align-self:flex-start;cursor:pointer">${I.up} Choose Excel file<input type="file" accept=".xlsx,.xls,.csv,.txt" id="imp-file" hidden></label></div>
+   <div class="field"><span class="lab">2. Upload the Excel template</span><p class="help">Don't have it? <a href="${templateUrl(TEMPLATE_FILES[0][0])}" download style="color:var(--red);font-weight:500">Download the address template</a></p><label class="btn" style="align-self:flex-start;cursor:pointer">${I.up} Choose Excel file<input type="file" accept=".xlsx,.xls,.csv,.txt" id="imp-file" hidden></label></div>
    <div class="field"><label for="imp-text">…or paste the list</label><p class="help">Copy straight from Excel (UPRN, address, postcode columns) or type one per line.</p>
    <textarea id="imp-text" class="inp paste" placeholder="12 Elm Grove, Leeds, LS6 2AB&#10;14 Elm Grove, Leeds, LS6 2AB" spellcheck="false"></textarea></div>
    <div class="field"><span class="lab">3. What work is planned?</span><p class="help">Tick all that apply. If your spreadsheet has a Work planned column, that's used instead for those rows.</p><div class="opts">${Object.entries(WORKS).map(([k,v])=>`<label class="opt"><input type="checkbox" name="imp-work" value="${k}"><span>${v}</span></label>`).join('')}</div></div>
@@ -529,6 +591,7 @@ function surveySheet(p,sv){
   const secs=surveySections(sv.type);const a=sv.answers||{};const total=secs.reduce((n,s)=>n+s.qs.length,0);
   const body=`<p class="meta" style="margin:0">${esc(p.address)} · <span class="mono">${esc(p.postcode)}</span>${sv.status==='submitted'?` · Submitted ${fmtDate(sv.submitted_at)}`:''}</p>
    <p class="meta" style="margin:0">Answers in <b style="color:var(--red)">red</b> are things the PM needs to know about.</p>
+   ${sv.id?`<button type="button" class="btn" data-act="sv-pdf" style="align-self:flex-start">${I.dl} Download PDF</button>`:''}
    <form id="sv-form">${secs.map((s,i)=>`<section class="sec" style="margin-bottom:14px"><div class="sec-h"><span class="num">${i+1}/${secs.length}</span><h3>${esc(s.title)}</h3></div>${s.qs.map(q=>qControl(q,a)).join('')}<div class="field"><span class="lab">Photos</span>${photoField('sec'+i,(sv.photos||{})['sec'+i]||[])}</div></section>`).join('')}</form>`;
   const collect=()=>{const fd=new FormData($('#sv-form'));const out={};for(const s of secs)for(const [id,,type] of s.qs){if(type==='multi'){const v=fd.getAll('q_'+id);if(v.length)out[id]=v}else{const v=String(fd.get('q_'+id)||'').trim();if(v)out[id]=v}}return out};
   const count=()=>{const el=$('#sv-count');if(el)el.textContent=`${Object.keys(collect()).length} of ${total} answered`};
@@ -542,7 +605,7 @@ function surveySheet(p,sv){
   openSheet({title:`${WORKS[sv.type]} survey`,body,
    foot:`<span class="progress-txt" id="sv-count"></span>${sv.status==='submitted'?`<button type="button" class="btn primary" data-act="sv-submit">Save changes</button>`:`<button type="button" class="btn" data-act="sv-draft">Save draft</button><button type="button" class="btn primary" data-act="sv-submit">Submit</button>`}`,
    mount(sh){$('#sv-form',sh).addEventListener('change',count);$('#sv-form',sh).addEventListener('input',count);count()},
-   acts:{'sv-draft':b=>saveIt(false,b),'sv-submit':b=>saveIt(true,b)}});
+   acts:{'sv-draft':b=>saveIt(false,b),'sv-submit':b=>saveIt(true,b),'sv-pdf':b=>surveyPdf(S.surveys.get(sv.id)||sv,b)}});
 }
 
 /* ---------- snags ---------- */
@@ -775,6 +838,8 @@ function exportCsv(kind){
     [...S.snags.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(s=>{const p=P(s.property_id);const c=S.contractors.get(s.contractor_id);rows.push([snagRef(s),p.address,p.postcode,projectName(p),s.title,s.location,c?c.name:'Own team',s.trade,s.priority,(SNAG[s.status]||SNAG.open)[0],fmtDate(s.raised_at),s.raised_by,fmtDue(s.due),fmtDate(s.fixed_at),s.status==='closed'?fmtDate(s.closed_at):'',isOverdue(s)?'Yes':'',s.notes,(s.photos||[]).length])})}
   else if(kind==='surveys'){name=`survey-answers-${d}.csv`;rows=[['Address','Postcode','Project','Survey','Status','Date','Surveyor','Section','Question','Answer','Flag']];
     [...S.surveys.values()].forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
+  else if(kind==='delays'){name=`delays-${d}.csv`;rows=[['Address','Postcode','UPRN / ref','Project','Reason','Responsible','Started','Ended','Days lost','Status','Notes','Logged by','Logged on']];
+    [...S.delays.values()].sort((a,b)=>String(a.started).localeCompare(String(b.started))).forEach(x=>{const p=P(x.property_id);rows.push([p.address,p.postcode,p.ref,projectName(p),x.reason,x.cause,fmtDue(x.started),x.ended?fmtDue(x.ended):'Ongoing',delayDays(x),x.status==='resolved'?'Resolved':'Ongoing',x.notes,x.logged_by,fmtDate(x.logged_at)])})}
   else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Scaffolder','Status','Strike requested for','Confirmed date','Struck','Called off','Called off by','Checks done','Notes']];
     [...S.scaffolds.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),p.address,p.postcode,projectName(p),c?c.name:'',(SCAFF[x.status]||SCAFF.requested)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
   else{name=`addresses-${d}.csv`;rows=[['UPRN / ref','Address','Postcode','Project','Work','Status','Open snags','Asbestos','Asbestos where','Affects works','Asbestos survey ref','Asbestos survey date','Access notes']];
@@ -816,6 +881,9 @@ document.addEventListener('click',e=>{
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
     case'asb-f':S.asb=t.dataset.v;renderBody();break;
+    case'delay-f':S.delayF=!S.delayF;renderBody();break;
+    case'new-delay':delaySheet(S.props.get(S.view.id));break;
+    case'open-delay':{const d=S.delays.get(t.dataset.id);const p=d&&S.props.get(d.property_id);if(p)delaySheet(p,d);break}
     case'asb-edit':asbSheet(S.props.get(S.view.id));break;
     case'new-scaffold':newScaffoldSheet(S.props.get(S.view.id));break;
     case'open-scaffold':{const x=S.scaffolds.get(t.dataset.id);if(x)scaffoldSheet(x);break}

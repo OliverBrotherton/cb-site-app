@@ -19,6 +19,10 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `$
 const toastHas = async (page, txt) => { await page.waitForFunction(t => document.querySelector('#toast')?.textContent.includes(t), txt, { timeout: 8000 }); return true; };
 
 const b = await chromium.launch();
+// The live site loads jsPDF from cdnjs; tests serve the same version locally
+const route = async ctx => ctx.route('https://cdnjs.cloudflare.com/ajax/libs/jspdf/**', r => r.fulfill({ path: 'node_modules/jspdf/dist/jspdf.umd.min.js', contentType: 'text/javascript' }));
+const _newPage = b.newPage.bind(b);
+b.newPage = async opts => { const pg = await _newPage({ acceptDownloads: true, ...opts }); await route(pg); return pg; };
 try {
   // ---------- admin unlocks and sets up a project ----------
   const admin = await b.newPage(phone);
@@ -299,6 +303,42 @@ try {
   ok((await api('data', {}, { authorization: 'Bearer ' + forged })).ok === false, 'tampered session tokens are rejected');
   ok((await api('saveProject', { name: 'X', pin: '123123' }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot create projects');
   ok((await api('savePm', { name: 'X', pin: '123124' }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot create other PMs');
+
+  // ---------- delays ----------
+  await admin.reload(); await admin.waitForSelector('#vbody'); await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=14 Elm Grove');
+  await admin.click('[data-act=new-delay]');
+  await admin.click('[data-act=dl-save]'); await toastHas(admin, 'Pick the reason');
+  await admin.selectOption('#dl-r', 'No access - tenant not in');
+  await admin.click('label.opt:has(input[name=dl-c][value=Tenant])');
+  const fiveAgo = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+  await admin.fill('#dl-s', fiveAgo); await admin.dispatchEvent('#dl-s', 'change');
+  ok((await admin.textContent('#dl-days')).includes('5 calendar days'), 'days lost counted from the start date');
+  await admin.fill('#dl-n', 'Three visits, calling card left');
+  await shot(admin, '15-delay');
+  await admin.click('[data-act=dl-save]'); await toastHas(admin, 'Delay logged');
+  ok(await admin.isVisible('text=Delayed 5 days'), 'address shows it is delayed');
+  await admin.click('[data-act=open-delay]');
+  await admin.uncheck('#dl-on');
+  await admin.click('[data-act=dl-save]'); await toastHas(admin, 'Delay saved');
+  ok(await admin.isVisible('[data-act=open-delay] >> text=Resolved'), 'delay can be closed off');
+  await admin.click('.nav [data-tab=reports]');
+  ok(await admin.isVisible('text=Days down to tenant or client'), 'Progress tab shows delay totals');
+  ok((await fetch(BASE + '/templates/' + encodeURIComponent('CB Site App - Survey Questions Template.xlsx'))).status === 200, 'survey questions template is on the site');
+
+  // ---------- survey PDF ----------
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=14 Elm Grove');
+  await admin.click('[data-act=open-survey]');
+  await admin.setInputFiles('[data-photo-input=sec0]', 'public/icon-512.png');
+  await admin.waitForSelector('[data-photos=sec0] img[data-act=view-photo]');
+  await admin.click('[data-act=sv-submit]'); await toastHas(admin, 'Survey submitted');
+  await admin.click('[data-act=open-survey]');
+  const [dl] = await Promise.all([admin.waitForEvent('download', { timeout: 20000 }), admin.click('[data-act=sv-pdf]')]);
+  const pdfPath = (SHOTS || '/tmp') + '/survey.pdf'; await dl.saveAs(pdfPath);
+  const head = fs.readFileSync(pdfPath).subarray(0, 5).toString();
+  ok(head === '%PDF-' && dl.suggestedFilename().includes('14 Elm Grove') && fs.statSync(pdfPath).size > 5000, 'survey downloads as a PDF with its photo');
+  await admin.click('[data-act=close-sheet]');
 
   // ---------- bulk delete ----------
   const staffDel = await api('deleteProperties', { ids: [d0.projects[0].id] }, { authorization: 'Bearer ' + sTok });

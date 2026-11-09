@@ -28,7 +28,7 @@ http.createServer(async (req, res) => {
   }
   if (url.pathname === '/api/photo') return photo(req, wrap(res));
   if (url.pathname === '/__emails') { const { sentLog } = await import('./lib/email.js'); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(sentLog.map(m => ({ to: m.to, cc: m.cc, subject: m.subject, attachments: (m.attachments || []).length, text: m.text })))); }
-  const file = path.join('public', url.pathname === '/' ? 'index.html' : path.normalize(url.pathname).replace(/^(\.\.[/\\])+/, ''));
+  const file = path.join('public', url.pathname === '/' ? 'index.html' : path.normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, ''));
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }); res.end(buf);
