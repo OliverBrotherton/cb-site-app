@@ -380,7 +380,8 @@ try {
   ok((await api('saveQuestions', { questions: {}, project_id: leedsId }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot change another PM\'s project questions');
   ok((await api('saveQuestions', { questions: {} }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot change the company questions');
   const pmQ = (await api('data', {}, { authorization: 'Bearer ' + pmTok })).data;
-  const pmCur = (await api('currentQuestions', { project_id: pmQ.projects[0].id }, { authorization: 'Bearer ' + pmTok })).data;
+  const defaults = new Function(fs.readFileSync('public/questions.js', 'utf8') + ';return DEFAULT_QUESTIONS')();
+  const pmCur = (await api('currentQuestions', { project_id: pmQ.projects[0].id, fallback: defaults }, { authorization: 'Bearer ' + pmTok })).data;
   ok((await api('saveQuestions', { questions: pmCur, project_id: pmQ.projects[0].id }, { authorization: 'Bearer ' + pmTok })).ok === true, 'PM can save questions for their own project');
   await pmPage.reload(); await pmPage.waitForSelector('#vbody'); await pmPage.click('.nav [data-tab=projects]');
   ok(await pmPage.isVisible(`[data-act=q-scope][data-id="${pmQ.projects[0].id}"]`) && !(await pmPage.isVisible('[data-act=q-scope][data-id=""]')), 'PM can change questions on their own project only');
