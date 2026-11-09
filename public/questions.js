@@ -12,7 +12,7 @@ const ROOMS=['Kitchen','Bathroom','WC','Hallway','Landing','Stairs','Living room
 const GFP=['Good','Fair','Poor'];
 
 // [id, question, type(yn|choice|multi|text|number), options, flag-answer]
-const COMMON={title:'Access & safety',qs:[
+let COMMON={title:'Access & safety',qs:[
  ['c_tenant','Was the tenant in?','yn'],
  ['c_access','Access arrangements','text',null,null,'Key safe, best times to call, who to contact'],
  ['c_vuln','Vulnerable occupant or extra needs?','yn',null,'Yes'],
@@ -22,7 +22,7 @@ const COMMON={title:'Access & safety',qs:[
  ['c_damp','Damp or mould visible?','yn',null,'Yes'],
  ['c_hazard','Any other H&S hazards? (hoarding, sharps, unsafe structure)','yn',null,'Yes'],
  ['c_parking','Parking, skip and welfare','text',null,null,'Where can the van, skip and welfare go?']]};
-const TEMPLATES={
+let TEMPLATES={
  kitchen:[
   {title:'Layout',qs:[['k_layout','Kitchen layout','choice',['Galley','L-shape','U-shape','Single run','Other']],['k_size','Room size (length × width, mm)','text'],['k_base','Base units now','number'],['k_wall','Wall units now','number'],['k_choice','Tenant choices (doors, worktop, flooring)','text']]},
   {title:'Services',qs:[['k_boiler','Boiler in the kitchen?','yn'],['k_cooker','Cooker type','choice',['Gas','Electric','Dual fuel','None']],['k_gas','Gas isolation valve accessible?','yn',null,'No'],['k_stop','Stopcock found and working?','yn',null,'No'],['k_rcd','Consumer unit has RCD protection?','yn',null,'No'],['k_rewire','Electrical upgrade likely?','yn',null,'Yes'],['k_fan','Extract fan present and working?','yn',null,'No']]},
@@ -45,8 +45,22 @@ const TEMPLATES={
  structural:[
   {title:'The defect',qs:[['s_type','What sort of defect?','multi',['Cracking','Subsidence / movement','Lintel failure','Wall tie failure','Timber decay','Bowing wall','Other']],['s_loc','Where is it?','text'],['s_crack','Widest crack (mm)','number'],['s_mon','Crack monitoring in place?','yn'],['s_report','Engineer\'s report on file?','yn',null,'No']]},
   {title:'Risk',qs:[['s_safe','Safe to stay in?','choice',['Yes','Concerns - ring PM today'],'Concerns - ring PM today'],['s_temp','Propping or temporary works needed?','yn',null,'Yes'],['s_pw','Party Wall notice needed?','yn',null,'Yes'],['s_trees','Trees or drains near the defect?','yn']]}]};
-const CLOSE={title:'Sign-off',qs:[['z_go','OK to go ahead with the works?','choice',['Yes','Yes, with conditions','No - refer to PM'],'No - refer to PM'],['z_notes','Anything else the team should know?','text']]};
-function surveySections(type){return [COMMON,...(TEMPLATES[type]||[]),CLOSE]}
+let CLOSE={title:'Sign-off',qs:[['z_go','OK to go ahead with the works?','choice',['Yes','Yes, with conditions','No - refer to PM'],'No - refer to PM'],['z_notes','Anything else the team should know?','text']]};
+// Each section has a stable key for its photos, so adding or moving sections never mixes up old surveys' photos
+function keySections(q){
+  q.COMMON.key=q.COMMON.key||'sec0';
+  q.CLOSE.keyBy=q.CLOSE.keyBy||{};
+  for(const [t,list] of Object.entries(q.TEMPLATES)){list.forEach((s,i)=>{s.key=s.key||'sec'+(i+1)});if(!q.CLOSE.keyBy[t])q.CLOSE.keyBy[t]='sec'+(list.length+1)}
+  return q;
+}
+keySections({COMMON,TEMPLATES,CLOSE});
+const DEFAULT_QUESTIONS=JSON.parse(JSON.stringify({COMMON,TEMPLATES,CLOSE}));
+function useQuestions(q){q=keySections(JSON.parse(JSON.stringify(q||DEFAULT_QUESTIONS)));COMMON=q.COMMON;TEMPLATES=q.TEMPLATES;CLOSE=q.CLOSE}
+// sv given: removed questions still show where that survey answered them. Empty sections are dropped.
+function surveySections(type,sv){
+  const a=(sv&&sv.answers)||{};
+  return [COMMON,...(TEMPLATES[type]||[]),CLOSE].map(s=>({title:s.title,pkey:s===CLOSE?(CLOSE.keyBy[type]||'secZ'):s.key,qs:s.qs.filter(q=>!q[6]||a[q[0]]!=null)})).filter(s=>s.qs.length);
+}
 
 
 const ASB_STATUS=['No asbestos found','Asbestos present','No survey available'];

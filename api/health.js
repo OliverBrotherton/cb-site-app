@@ -49,6 +49,7 @@ export default async function handler(req, res) {
         snags: ['id', 'ref_no', 'property_id', 'contractor_id', 'title', 'photos', 'fix_photos', 'status', 'email_status', 'emailed_to'],
         scaffolds: ['id', 'ref_no', 'property_id', 'contractor_id', 'strike_date', 'notes', 'checks', 'photos', 'status', 'confirmed_date', 'confirmed_at', 'scaff_note', 'struck_at', 'struck_by', 'struck_photos', 'requested_by', 'requested_at', 'email_status', 'email_error', 'emailed_at', 'emailed_to'],
         surveys: ['id', 'property_id', 'type', 'answers', 'photos', 'status'],
+        settings: ['id', 'key', 'value', 'updated_at', 'updated_by'],
         delays: ['id', 'property_id', 'reason', 'cause', 'started', 'ended', 'notes', 'photos', 'status', 'logged_by', 'logged_at', 'resolved_by', 'resolved_at'],
       };
       const problems = [];

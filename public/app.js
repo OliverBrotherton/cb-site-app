@@ -58,7 +58,7 @@ async function load(){
   loading=(async()=>{
     try{
       const d=await api('data');
-      S.role=d.role;S.emailReady=d.emailReady;
+      S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions&&d.questions.value);
       for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]],['delays',d.delays||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
@@ -251,7 +251,7 @@ function snagsBody(){
 }
 
 /* ---------- property ---------- */
-function flagsOf(sv){let n=0;for(const sec of surveySections(sv.type))for(const [id,,,,flag] of sec.qs){const a=sv.answers&&sv.answers[id];if(flag&&(a===flag||(Array.isArray(a)&&a.includes(flag))))n++}return n}
+function flagsOf(sv){let n=0;for(const sec of surveySections(sv.type,sv))for(const [id,,,,flag] of sec.qs){const a=sv.answers&&sv.answers[id];if(flag&&(a===flag||(Array.isArray(a)&&a.includes(flag))))n++}return n}
 function propertyBody(){
   const p=S.props.get(S.view.id);
   if(!p)return`<div class="empty"><h3>This address has been removed</h3><button type="button" class="btn" data-act="back">Back to addresses</button></div>`;
@@ -292,6 +292,11 @@ function projectsBody(){
     const open=[...S.snags.values()].filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;const cs=contractorsOf(pr.id);
     return`<button type="button" class="row" data-act="open-project" data-id="${pr.id}"><div class="main"><span class="t">${esc(pr.name)}</span><span class="s"><span>${props.length} address${props.length===1?'':'es'}</span><span>${cs.length} contractor${cs.length===1?'':'s'}</span>${pr.manages?`<span class="mono">PIN ${esc(pr.pin)}</span>`:''}${S.role==='admin'?`<span>${esc((S.pms.get(pr.pm_id)||{}).name||'Run by you')}</span>`:''}</span></div><div class="end">${open?`<span class="badge-snags">${open} open</span>`:''}</div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`;
   if(S.role==='admin'){
+    const q=S.questions;
+    out+=`<div class="section-h"><h3>Survey questions</h3></div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="meta">${q?`Last changed ${fmtDate(q.updated_at)}${q.updated_by?' by '+esc(q.updated_by):''}`:'Using the original questions'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="q-template">${I.dl} Download template</button><label class="btn primary" style="cursor:pointer">${I.up} Upload edited template<input type="file" accept=".xlsx" id="q-upload" hidden></label>${q?`<button type="button" class="btn" data-act="q-undo">Undo last change</button>`:''}</div>
+    <p class="meta" style="margin:0">Download the template, change the questions in Excel, then upload it here. You'll see every change before anything is saved.</p></div>`;
     const pms=[...S.pms.values()].sort((a,b)=>a.name.localeCompare(b.name));
     out+=`<div class="section-h"><h3>Project managers</h3><span class="meta">${pms.length}</span></div>
     <p class="meta" style="margin:-8px 0 0">Give each PM their own PIN. They can set up and run their own projects, and only see theirs.</p>
@@ -407,10 +412,101 @@ function reportsBody(){
 /* ---------- templates ---------- */
 const TEMPLATE_FILES=[
   ['CB Site App - Address Upload Template.xlsx','Address upload','Fill in and upload under Addresses > Add addresses.'],
-  ['CB Site App - Survey Questions Template.xlsx','Survey questions','The current survey questions. Mark up changes and send it back to get the surveys updated.'],
   ['CB Site App - Projects and Contractors Setup.xlsx','Projects & contractors setup','Gather PINs, emails and contractors before setting up a project.']];
 const templateUrl=f=>'/templates/'+encodeURIComponent(f);
-function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list">${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
+function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list"><button type="button" class="row" data-act="q-template"><div class="main"><span class="t">Survey questions</span><span class="s"><span>The questions the app is using now.${S.role==='admin'?' Mark up changes and upload it on the Projects tab.':' Mark up changes and send it to your admin.'}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</button>${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
+
+/* ---------- survey questions upload ---------- */
+const TYPE_LABELS={yn:'Yes / No / N/A',choice:'Pick one',multi:'Tick all that apply',number:'Number',text:'Free text'};
+const typeFromLabel=v=>{v=String(v||'').trim().toLowerCase();for(const [k,l] of Object.entries(TYPE_LABELS))if(l.toLowerCase()===v||k===v)return k;if(/yes|y\/n/.test(v))return'yn';if(/tick|multi/.test(v))return'multi';if(/pick|choice|one/.test(v))return'choice';if(/num/.test(v))return'number';if(/text|free/.test(v))return'text';return''};
+// Options are separated by semicolons; commas work too when no option needs one
+const splitOpts=v=>{v=String(v||'');return v.split(/[;\n]/.test(v)?/[;\n]/:/,/).map(x=>x.trim()).filter(Boolean)};
+async function downloadQuestionsTemplate(btn){
+  const h={'content-type':'application/json'};if(S.token)h.authorization='Bearer '+S.token;if(S.name)h['x-name']=encodeURIComponent(S.name);
+  if(btn)btn.disabled=true;
+  try{
+    const r=await fetch('/api/questions-template',{method:'POST',headers:h,body:JSON.stringify({questions:{COMMON,TEMPLATES,CLOSE},works:WORKS})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw{message:j.error||'The template couldn\'t be made. Try again.'}}
+    const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download='CB Site App - Survey Questions Template.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){toast(e.message||'Download didn\'t work')}finally{if(btn)btn.disabled=false}
+}
+// Reads an edited template and works out exactly what would change
+function readQuestionsUpload(wb,X){
+  const q=JSON.parse(JSON.stringify({COMMON,TEMPLATES,CLOSE}));
+  const errors=[],changes=[];
+  const rowsOf=name=>{const n=wb.SheetNames.find(x=>x.toLowerCase()===name);return n?X.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''}):null};
+  const cols=(head,map)=>Object.fromEntries(Object.entries(map).map(([k,re])=>[k,head.findIndex(h=>re.test(String(h)))]));
+  const all=[];const where={};
+  const addAll=(sec,label)=>sec.qs.forEach(x=>{all.push(x);where[x[0]]=`${label} > ${sec.title}`});
+  addAll(q.COMMON,'All surveys');for(const [k,l] of Object.entries(q.TEMPLATES))l.forEach(sec=>addAll(sec,WORKS[k]));addAll(q.CLOSE,'All surveys');
+  const byId=Object.fromEntries(all.map(x=>[x[0],x]));
+  const cur=rowsOf('current questions');
+  if(!cur){errors.push('This isn\'t the survey questions template (there\'s no "Current questions" tab). Download a fresh one and try again.');return{q,errors,changes}}
+  const c=cols(cur[0]||[],{id:/^id/i,question:/^question/i,type:/answer type/i,opts:/answer options/i,flag:/flags red/i,help:/help/i,action:/keep|remove/i});
+  if(c.id<0||c.question<0){errors.push('The ID or Question column is missing. Download a fresh template and try again.');return{q,errors,changes}}
+  cur.slice(1).forEach((r,i)=>{
+    const id=String(r[c.id]||'').trim();if(!id)return;
+    const x=byId[id];const rowNo=i+2;
+    if(!x){errors.push(`Row ${rowNo}: ID "${id}" isn't one of the app's questions. Don't change the ID column.`);return}
+    if(x[6])return;
+    const name=`${where[id]}: "${x[1]}"`;
+    if(/remove/i.test(String(r[c.action]||''))){x[6]=1;changes.push(['Removed',name]);return}
+    const label=String(r[c.question]||'').replace(/\s+/g,' ').trim();
+    if(!label){errors.push(`Row ${rowNo}: the question is blank. To remove it, pick Remove instead.`);return}
+    const type=c.type>=0?typeFromLabel(r[c.type]):x[2];
+    if(!type){errors.push(`Row ${rowNo}: "${r[c.type]}" isn't an answer type. Use one from the drop-down.`);return}
+    const opts=type==='choice'||type==='multi'?splitOpts(c.opts>=0?r[c.opts]:(x[3]||[]).join(',')):null;
+    if(opts&&opts.length<2){errors.push(`Row ${rowNo} ("${label}"): needs at least 2 answer options, separated by semicolons (;).`);return}
+    const flag=c.flag>=0?String(r[c.flag]||'').trim()||null:x[4];
+    const allowed=type==='yn'?['Yes','No','N/A']:opts||[];
+    if(flag&&!allowed.includes(flag)){errors.push(`Row ${rowNo} ("${label}"): the red-flag answer "${flag}" must be one of: ${allowed.join(', ')||'(none for this type)'}.`);return}
+    const help=c.help>=0?String(r[c.help]||'').trim()||null:x[5];
+    if(label!==x[1])changes.push(['Reworded',`${where[id]}: "${x[1]}" → "${label}"`]);
+    if(type!==x[2])changes.push(['Answer type changed',`"${label}": ${TYPE_LABELS[x[2]]} → ${TYPE_LABELS[type]}`]);
+    else if(opts&&(opts.join('|')!==(x[3]||[]).join('|')))changes.push(['Options changed',`"${label}": ${opts.join(', ')}`]);
+    if((flag||'')!==(x[4]||''))changes.push(['Red flag changed',`"${label}": ${flag?'flags red on '+flag:'no longer flags red'}`]);
+    if((help||'')!==(x[5]||''))changes.push(['Help text changed',`"${label}"`]);
+    x[1]=label;x[2]=type;x[3]=opts;x[4]=flag;x[5]=help;
+  });
+  const nq=rowsOf('new questions');
+  if(nq&&nq.length>1){
+    const n=cols(nq[0],{survey:/^survey/i,section:/^section/i,question:/^question/i,type:/answer type/i,opts:/answer options/i,flag:/flags red/i,help:/help/i});
+    const workKey=v=>{v=String(v||'').trim().toLowerCase();if(!v)return'';if(/^all/.test(v))return'all';return Object.keys(WORKS).find(k=>WORKS[k].toLowerCase()===v||k===v)||null};
+    nq.slice(1).forEach((r,i)=>{
+      const label=String(r[n.question]||'').replace(/\s+/g,' ').trim();if(!label)return;const rowNo=i+2;
+      const wk=workKey(r[n.survey]);const st=String(r[n.section]||'').trim();
+      if(!wk){errors.push(`New questions row ${rowNo} ("${label}"): pick the survey from the drop-down.`);return}
+      if(!st){errors.push(`New questions row ${rowNo} ("${label}"): say which section it goes in.`);return}
+      const type=typeFromLabel(r[n.type]);if(!type){errors.push(`New questions row ${rowNo} ("${label}"): pick an answer type from the drop-down.`);return}
+      const opts=type==='choice'||type==='multi'?splitOpts(r[n.opts]):null;
+      if(opts&&opts.length<2){errors.push(`New questions row ${rowNo} ("${label}"): needs at least 2 answer options, separated by semicolons (;).`);return}
+      const flag=String(r[n.flag]||'').trim()||null;const allowed=type==='yn'?['Yes','No','N/A']:opts||[];
+      if(flag&&!allowed.includes(flag)){errors.push(`New questions row ${rowNo} ("${label}"): the red-flag answer "${flag}" must be one of: ${allowed.join(', ')||'(none for this type)'}.`);return}
+      let sec,label2;
+      if(wk==='all'){sec=[q.COMMON,q.CLOSE].find(x=>x.title.toLowerCase()===st.toLowerCase());if(!sec){errors.push(`New questions row ${rowNo} ("${label}"): for All surveys, the section must be "${q.COMMON.title}" or "${q.CLOSE.title}".`);return}label2='All surveys'}
+      else{sec=q.TEMPLATES[wk].find(x=>x.title.toLowerCase()===st.toLowerCase());if(!sec){sec={title:st,qs:[],key:'n'+rid(8)};q.TEMPLATES[wk].push(sec);changes.push(['New section',`${WORKS[wk]} > ${st}`])}label2=WORKS[wk]}
+      sec.qs.push(['u'+rid(10),label,type,opts,flag,String(r[n.help]||'').trim()||null,0]);
+      changes.push(['Added',`${label2} > ${sec.title}: "${label}"`]);
+    });
+  }
+  return{q,errors,changes};
+}
+async function uploadQuestions(file){
+  try{
+    toast('Reading '+file.name+'…');const X=await loadSheetJS();
+    const wb=X.read(await file.arrayBuffer(),{type:'array'});
+    const {q,errors,changes}=readQuestionsUpload(wb,X);
+    const groups={};changes.forEach(([k,v])=>(groups[k]=groups[k]||[]).push(v));
+    const order=['Reworded','Answer type changed','Options changed','Red flag changed','Help text changed','Removed','New section','Added'];
+    openSheet({title:'Check the changes',
+     body:`${errors.length?`<div class="banner" style="background:var(--bad-soft);color:var(--bad)"><b>${errors.length} thing${errors.length>1?'s':''} to fix in the spreadsheet first</b><ul style="margin:8px 0 0;padding-left:18px">${errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}
+     ${!changes.length&&!errors.length?'<div class="empty"><h3>No changes found</h3><p>The file matches the questions the app is using now.</p></div>':''}
+     ${changes.length?`<p style="margin:0"><b>${changes.length} change${changes.length>1?'s':''}</b> will apply to <b>new surveys</b>. Surveys already done keep their answers and photos.</p>`:''}
+     ${order.filter(k=>groups[k]).map(k=>`<div class="field"><span class="lab">${esc(k)} (${groups[k].length})</span><div class="notes-box" style="white-space:normal">${groups[k].map(esc).join('<br>')}</div></div>`).join('')}`,
+     foot:`<button type="button" class="btn" data-act="close-sheet">Cancel</button><button type="button" class="btn primary" data-act="q-apply" ${errors.length||!changes.length?'disabled':''}>Apply changes</button>`,
+     acts:{'q-apply':async b=>{b.disabled=true;try{await api('saveQuestions',{questions:q});await load();closeSheet();toast('Survey questions updated')}catch(e){b.disabled=false;toast(e.message)}}}});
+  }catch(e){toast('Couldn\'t read that file. Use the survey questions template, saved as .xlsx.')}
+}
 
 /* ---------- sheet ---------- */
 function openSheet({title,body,foot,acts={},mount}){
@@ -444,6 +540,7 @@ async function shrink(file){
 }
 const toB64=blob=>new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(String(f.result).split(',')[1]);f.onerror=rej;f.readAsDataURL(blob)});
 document.addEventListener('change',async e=>{
+  if(e.target.id==='q-upload'){const f=e.target.files[0];e.target.value='';if(f)uploadQuestions(f);return}
   const sel=e.target.closest&&e.target.closest('[data-sel]');
   if(sel){sel.checked?S.sel.add(sel.dataset.sel):S.sel.delete(sel.dataset.sel);const b=$('.selbar b');if(b)b.textContent=S.sel.size+' picked';return}
   const inp=e.target.closest&&e.target.closest('[data-photo-input]');if(!inp)return;
@@ -588,16 +685,16 @@ function qControl([id,label,type,opts,flag,help],a){
   return`<div class="field">${lab}${help?`<p class="help">${esc(help)}</p>`:''}${c}</div>`;
 }
 function surveySheet(p,sv){
-  const secs=surveySections(sv.type);const a=sv.answers||{};const total=secs.reduce((n,s)=>n+s.qs.length,0);
+  const secs=surveySections(sv.type,sv);const a=sv.answers||{};const total=secs.reduce((n,s)=>n+s.qs.length,0);
   const body=`<p class="meta" style="margin:0">${esc(p.address)} · <span class="mono">${esc(p.postcode)}</span>${sv.status==='submitted'?` · Submitted ${fmtDate(sv.submitted_at)}`:''}</p>
    <p class="meta" style="margin:0">Answers in <b style="color:var(--red)">red</b> are things the PM needs to know about.</p>
    ${sv.id?`<button type="button" class="btn" data-act="sv-pdf" style="align-self:flex-start">${I.dl} Download PDF</button>`:''}
-   <form id="sv-form">${secs.map((s,i)=>`<section class="sec" style="margin-bottom:14px"><div class="sec-h"><span class="num">${i+1}/${secs.length}</span><h3>${esc(s.title)}</h3></div>${s.qs.map(q=>qControl(q,a)).join('')}<div class="field"><span class="lab">Photos</span>${photoField('sec'+i,(sv.photos||{})['sec'+i]||[])}</div></section>`).join('')}</form>`;
+   <form id="sv-form">${secs.map((s,i)=>`<section class="sec" style="margin-bottom:14px"><div class="sec-h"><span class="num">${i+1}/${secs.length}</span><h3>${esc(s.title)}</h3></div>${s.qs.map(q=>qControl(q,a)).join('')}<div class="field"><span class="lab">Photos</span>${photoField(s.pkey,(sv.photos||{})[s.pkey]||[])}</div></section>`).join('')}</form>`;
   const collect=()=>{const fd=new FormData($('#sv-form'));const out={};for(const s of secs)for(const [id,,type] of s.qs){if(type==='multi'){const v=fd.getAll('q_'+id);if(v.length)out[id]=v}else{const v=String(fd.get('q_'+id)||'').trim();if(v)out[id]=v}}return out};
   const count=()=>{const el=$('#sv-count');if(el)el.textContent=`${Object.keys(collect()).length} of ${total} answered`};
   const saveIt=async(submit,btn)=>{
     if(photosBusy()){toast('Wait for photos to finish uploading');return}
-    const photos={};secs.forEach((s,i)=>{const ids=photoPaths('sec'+i);if(ids.length)photos['sec'+i]=ids});
+    const photos={...(sv.photos||{})};secs.forEach(s=>{const ids=photoPaths(s.pkey);if(ids.length)photos[s.pkey]=ids;else delete photos[s.pkey]});
     btn.disabled=true;
     try{await api('saveSurvey',{id:sv.id,property_id:p.id,type:sv.type,answers:collect(),photos,submit});await load();closeSheet();toast(submit||sv.status==='submitted'?'Survey submitted':'Draft saved. Finish it later from the address page.')}
     catch(e){btn.disabled=false;toast(e.message)}
@@ -837,7 +934,7 @@ function exportCsv(kind){
   if(kind==='snags'){name=`snag-register-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Snag','Where','Contractor','Trade','Priority','Status','Raised','Raised by','Fix by','Fixed','Signed off','Overdue','Notes','Photos']];
     [...S.snags.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(s=>{const p=P(s.property_id);const c=S.contractors.get(s.contractor_id);rows.push([snagRef(s),p.address,p.postcode,projectName(p),s.title,s.location,c?c.name:'Own team',s.trade,s.priority,(SNAG[s.status]||SNAG.open)[0],fmtDate(s.raised_at),s.raised_by,fmtDue(s.due),fmtDate(s.fixed_at),s.status==='closed'?fmtDate(s.closed_at):'',isOverdue(s)?'Yes':'',s.notes,(s.photos||[]).length])})}
   else if(kind==='surveys'){name=`survey-answers-${d}.csv`;rows=[['Address','Postcode','Project','Survey','Status','Date','Surveyor','Section','Question','Answer','Flag']];
-    [...S.surveys.values()].forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
+    [...S.surveys.values()].forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type,sv).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
   else if(kind==='delays'){name=`delays-${d}.csv`;rows=[['Address','Postcode','UPRN / ref','Project','Reason','Responsible','Started','Ended','Days lost','Status','Notes','Logged by','Logged on']];
     [...S.delays.values()].sort((a,b)=>String(a.started).localeCompare(String(b.started))).forEach(x=>{const p=P(x.property_id);rows.push([p.address,p.postcode,p.ref,projectName(p),x.reason,x.cause,fmtDue(x.started),x.ended?fmtDue(x.ended):'Ongoing',delayDays(x),x.status==='resolved'?'Resolved':'Ongoing',x.notes,x.logged_by,fmtDate(x.logged_at)])})}
   else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Scaffolder','Status','Strike requested for','Confirmed date','Struck','Called off','Called off by','Checks done','Notes']];
@@ -881,6 +978,9 @@ document.addEventListener('click',e=>{
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
     case'asb-f':S.asb=t.dataset.v;renderBody();break;
+    case'q-template':downloadQuestionsTemplate(t);break;
+    case'q-undo':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again to go back to the previous questions';return}
+      api('undoQuestions',{}).then(()=>load()).then(()=>toast('Previous questions put back')).catch(err=>toast(err.message));break;
     case'delay-f':S.delayF=!S.delayF;renderBody();break;
     case'new-delay':delaySheet(S.props.get(S.view.id));break;
     case'open-delay':{const d=S.delays.get(t.dataset.id);const p=d&&S.props.get(d.property_id);if(p)delaySheet(p,d);break}

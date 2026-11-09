@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import rpc from './api/rpc.js';
 import photo from './api/photo.js';
+import qtemplate from './api/questions-template.js';
 
 process.env.ADMIN_PIN ||= '999999';
 process.env.SESSION_SECRET ||= 'local-dev-secret-local-dev-secret-0123';
@@ -27,6 +28,7 @@ http.createServer(async (req, res) => {
     return rpc(req, wrap(res));
   }
   if (url.pathname === '/api/photo') return photo(req, wrap(res));
+  if (url.pathname === '/api/questions-template') { let raw = ''; for await (const ch of req) raw += ch; try { req.body = JSON.parse(raw || '{}'); } catch { req.body = {}; } return qtemplate(req, wrap(res)); }
   if (url.pathname === '/__emails') { const { sentLog } = await import('./lib/email.js'); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(sentLog.map(m => ({ to: m.to, cc: m.cc, subject: m.subject, attachments: (m.attachments || []).length, text: m.text })))); }
   const file = path.join('public', url.pathname === '/' ? 'index.html' : path.normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, ''));
   fs.readFile(file, (err, buf) => {

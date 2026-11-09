@@ -20,7 +20,10 @@ const toastHas = async (page, txt) => { await page.waitForFunction(t => document
 
 const b = await chromium.launch();
 // The live site loads jsPDF from cdnjs; tests serve the same version locally
-const route = async ctx => ctx.route('https://cdnjs.cloudflare.com/ajax/libs/jspdf/**', r => r.fulfill({ path: 'node_modules/jspdf/dist/jspdf.umd.min.js', contentType: 'text/javascript' }));
+const route = async ctx => {
+  await ctx.route('https://cdnjs.cloudflare.com/ajax/libs/jspdf/**', r => r.fulfill({ path: 'node_modules/jspdf/dist/jspdf.umd.min.js', contentType: 'text/javascript' }));
+  await ctx.route('https://cdnjs.cloudflare.com/ajax/libs/xlsx/**', r => r.fulfill({ path: 'node_modules/xlsx/dist/xlsx.full.min.js', contentType: 'text/javascript' }));
+};
 const _newPage = b.newPage.bind(b);
 b.newPage = async opts => { const pg = await _newPage({ acceptDownloads: true, ...opts }); await route(pg); return pg; };
 try {
@@ -324,7 +327,7 @@ try {
   ok(await admin.isVisible('[data-act=open-delay] >> text=Resolved'), 'delay can be closed off');
   await admin.click('.nav [data-tab=reports]');
   ok(await admin.isVisible('text=Days down to tenant or client'), 'Progress tab shows delay totals');
-  ok((await fetch(BASE + '/templates/' + encodeURIComponent('CB Site App - Survey Questions Template.xlsx'))).status === 200, 'survey questions template is on the site');
+  ok((await fetch(BASE + '/templates/' + encodeURIComponent('CB Site App - Address Upload Template.xlsx'))).status === 200, 'address template is on the site');
 
   // ---------- survey PDF ----------
   await admin.click('.nav [data-tab=addresses]');
@@ -338,6 +341,59 @@ try {
   const pdfPath = (SHOTS || '/tmp') + '/survey.pdf'; await dl.saveAs(pdfPath);
   const head = fs.readFileSync(pdfPath).subarray(0, 5).toString();
   ok(head === '%PDF-' && dl.suggestedFilename().includes('14 Elm Grove') && fs.statSync(pdfPath).size > 5000, 'survey downloads as a PDF with its photo');
+  await admin.click('[data-act=close-sheet]');
+
+  // ---------- survey questions: download, edit, upload, undo ----------
+  const ExcelJS = (await import('exceljs')).default;
+  await admin.click('.nav [data-tab=projects]');
+  const [qdl] = await Promise.all([admin.waitForEvent('download'), admin.click('.panel [data-act=q-template]')]);
+  const qPath = (SHOTS || '/tmp') + '/questions.xlsx'; await qdl.saveAs(qPath);
+  const wbq = new ExcelJS.Workbook(); await wbq.xlsx.readFile(qPath);
+  const cq = wbq.getWorksheet('Current questions');
+  let rowTenant, rowPets;
+  cq.eachRow((r, n) => { if (r.getCell(1).value === 'c_tenant') rowTenant = n; if (r.getCell(1).value === 'c_pets') rowPets = n; });
+  ok(rowTenant && rowPets && wbq.getWorksheet('How to use'), 'template lists the live questions');
+  cq.getRow(rowTenant).getCell(4).value = 'Was the tenant home?';
+  cq.getRow(rowPets).getCell(9).value = 'Remove';
+  const nqs = wbq.getWorksheet('New questions');
+  ['Kitchen', 'Services', 'Carbon monoxide alarm fitted?', 'Yes / No / N/A', '', 'No'].forEach((v, i) => { nqs.getRow(2).getCell(i + 1).value = v; });
+  ['Kitchen', 'Extras', 'Bin store condition', 'Pick one', 'Good, Poor', 'Poor'].forEach((v, i) => { nqs.getRow(3).getCell(i + 1).value = v; });
+  const goodPath = (SHOTS || '/tmp') + '/questions-edited.xlsx'; await wbq.xlsx.writeFile(goodPath);
+  ['Bathroom', 'Layout', 'Bad flag question', 'Yes / No / N/A', '', 'Maybe'].forEach((v, i) => { nqs.getRow(4).getCell(i + 1).value = v; });
+  const badPath = (SHOTS || '/tmp') + '/questions-bad.xlsx'; await wbq.xlsx.writeFile(badPath);
+
+  await admin.setInputFiles('#q-upload', badPath);
+  await admin.waitForSelector('text=Check the changes');
+  ok(await admin.isVisible('text=thing to fix') && await admin.isDisabled('[data-act=q-apply]'), 'mistakes in the upload are listed and block saving');
+  await admin.click('[data-act=close-sheet]');
+  await admin.setInputFiles('#q-upload', goodPath);
+  await admin.waitForSelector('text=Check the changes');
+  const preview = await admin.textContent('#sheet');
+  ok(!preview.includes('Options changed'), 'options containing commas are read correctly');
+  ok(preview.includes('Was the tenant home?') && preview.includes('Removed (1)') && preview.includes('Added (2)') && preview.includes('New section (1)'), 'preview shows every change before saving');
+  await shot(admin, '16-questions-preview');
+  await admin.click('[data-act=q-apply]'); await toastHas(admin, 'Survey questions updated');
+  ok((await api('saveQuestions', { questions: {} }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot change questions');
+
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  await admin.click('[data-act=new-survey]'); await admin.click('[data-act=pick-type][data-v=kitchen]');
+  const form = await admin.textContent('#sv-form');
+  ok(form.includes('Was the tenant home?') && !form.includes('Pets in the property?') && form.includes('Carbon monoxide alarm fitted?') && form.includes('Bin store condition'), 'new surveys use the uploaded questions');
+  await admin.click('[data-act=close-sheet]');
+  await admin.click('[data-act=back]');
+  await admin.click('[data-act=open-prop] >> text=14 Elm Grove');
+  await admin.click('[data-act=open-survey]');
+  ok(await admin.isVisible('#sv-form >> text=Suspected asbestos seen in the work area?') && await admin.isVisible('[data-photos=sec0] img[data-act=view-photo]'), 'old survey keeps its answers and photos');
+  await admin.click('[data-act=close-sheet]');
+
+  await admin.click('.nav [data-tab=projects]');
+  await admin.click('[data-act=q-undo]'); await admin.click('[data-act=q-undo]');
+  await toastHas(admin, 'Previous questions put back');
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  await admin.click('[data-act=new-survey]'); await admin.click('[data-act=pick-type][data-v=kitchen]');
+  ok((await admin.textContent('#sv-form')).includes('Was the tenant in?'), 'undo puts the original questions back');
   await admin.click('[data-act=close-sheet]');
 
   // ---------- bulk delete ----------

@@ -11,7 +11,7 @@ For IT or anyone carrying out a security test. Describes how access works, what 
 ## Who can do what
 | Role | How they get in | Can do |
 |---|---|---|
-| Admin | `ADMIN_PIN` env var | Everything, including managing PMs |
+| Admin | `ADMIN_PIN` env var | Everything, including managing PMs and changing the survey questions |
 | Project manager | Own 6-digit PIN (`pms` table) | Create and run their own projects, contractors and PINs. Site work on their projects |
 | Site team | Project's 6-digit PIN | Addresses, surveys and snags on that project only. No setup screens |
 | Contractor (incl. scaffolders) | 24-character random token in their email link (about 119 bits) | See their own snags and scaffold call-offs; close snags out / confirm and mark scaffold struck, with a photo. See asbestos info for those addresses only. Nothing else |
@@ -29,7 +29,7 @@ All permission checks are on the server (`lib/app.js`: `context`, `inScope`, `ow
 - CSV downloads neutralise spreadsheet formulas (cells starting `= + - @`).
 - Photos: JPEG/PNG/WebP only, max 6 MB. Asbestos survey PDFs: max 3 MB and must start with a real PDF header. random UUID file names, private bucket. They're served only to a valid PIN session or the contractor whose snag holds the photo, via 1-hour signed URLs.
 - Headers: Content-Security-Policy (scripts from self and cdnjs only, no framing), HSTS, X-Content-Type-Options, Referrer-Policy no-referrer, X-Frame-Options DENY.
-- Server inputs are length-limited and whitelisted (statuses, priorities, work types, emails, dates).
+- Server inputs are length-limited and whitelisted (statuses, priorities, work types, emails, dates). Uploaded survey questions are checked in full on the server (`lib/questions.js`) before they're saved, and the previous set is kept for undo.
 
 ## What was tested
 `npm test` runs an automated browser test (41 checks) covering the main flows and these access rules: wrong PINs refused and rate-limited, tampered tokens rejected, changed PINs lock out old phones, site teams can't create projects, PMs can't see or change other PMs' projects or create PMs, contractors only see their own snag and can't change addresses, photos aren't public. `test/graph.js` checks the Microsoft Graph request format.

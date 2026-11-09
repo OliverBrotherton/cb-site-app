@@ -39,7 +39,7 @@ async function surveyPdf(sv,btn){
     const doc=new jsPDF({unit:'pt',format:'a4'});
     const W=595.28,H=841.89,M=40,CW=W-2*M,BOTTOM=H-50;
     let y=M;
-    const secs=surveySections(sv.type),a=sv.answers||{};
+    const secs=surveySections(sv.type,sv),a=sv.answers||{};
     const answerText=v=>Array.isArray(v)?v.join(', '):String(v??'');
     const isFlag=(q,v)=>q[4]&&(v===q[4]||(Array.isArray(v)&&v.includes(q[4])));
     const font=(size,style='normal',rgb=PDF_INK)=>{doc.setFont('helvetica',style);doc.setFontSize(size);doc.setTextColor(...rgb)};
@@ -95,7 +95,7 @@ async function surveyPdf(sv,btn){
         y+=h;doc.setDrawColor(...PDF_LINE);doc.setLineWidth(0.5);doc.line(M,y-3,W-M,y-3);
       }
       // photos for this section, three to a row
-      const paths=(sv.photos||{})['sec'+i]||[];
+      const paths=(sv.photos||{})[sec.pkey]||[];
       if(paths.length){
         y+=6;const gap=10,cw=(CW-2*gap)/3,ch=cw*0.75;
         for(let j=0;j<paths.length;j+=3){

@@ -138,6 +138,15 @@ create table if not exists delays (
   resolved_at bigint
 );
 
+-- Added later: app-wide settings, e.g. survey questions uploaded by the admin
+create table if not exists settings (
+  id uuid primary key default gen_random_uuid(),
+  key text not null unique,
+  value jsonb not null default '{}',
+  updated_at bigint,
+  updated_by text not null default ''
+);
+
 create table if not exists login_attempts (
   id bigint generated always as identity primary key,
   ip text not null,
@@ -163,6 +172,7 @@ alter table surveys enable row level security;
 alter table snags enable row level security;
 alter table scaffolds enable row level security;
 alter table delays enable row level security;
+alter table settings enable row level security;
 alter table login_attempts enable row level security;
 
 -- Private bucket for photos (only the app's server can read it)

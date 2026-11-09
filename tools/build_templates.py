@@ -105,66 +105,7 @@ ws.add_data_validation(dvp); dvp.add("C2:C1001")
 wb.active = 0
 wb.save(OUT + "CB Site App - Address Upload Template.xlsx")
 
-# ---------------- 2. Survey questions ----------------
-d = json.loads(q)
-WORKS, COMMON, T, CLOSE = d["WORKS"], d["COMMON"], d["TEMPLATES"], d["CLOSE"]
-TYPE = {"yn": "Yes / No / N/A", "choice": "Pick one", "multi": "Tick all that apply", "number": "Number", "text": "Free text"}
-wb = Workbook()
-g = wb.active; g.title = "How to use"
-Q_TITLES = ["Survey", "Section", "Question", "Answer type", "Answer options", "Flags red when answer is", "Keep / Change / Remove", "Your new wording or notes"]
-r = guide(g, "Survey questions template",
-    "These are the pre-works survey questions in the app now. Mark them up and send this file back to get the app changed.",
-    ["Go to the Current questions tab. Every survey starts with 'Access & safety' and ends with 'Sign-off'. These are the same for all work types.",
-     "In 'Keep / Change / Remove', pick an option for any question you want changed. Leave it blank to keep it as it is.",
-     "If you pick Change, write the new wording or options in the last column.",
-     "'Flags red when answer is' is the answer that gets highlighted to the PM. Change it if you want a different trigger.",
-     "Put brand new questions on the New questions tab, one per row. Say which survey and section they belong to.",
-     "Answer types the app can do: Yes / No / N/A, Pick one, Tick all that apply, Number, Free text. Every section also gets photos automatically.",
-     "Send the finished file to whoever looks after the app and they update the questions. Answers already saved in the app are kept."])
-r = legend(g, r)
-example(g, r, ["Survey", "Section", "Question", "Answer type", "Answer options", "Flags red when answer is"],
-        ["Kitchen", "Services", "Is there a carbon monoxide alarm?", "Yes / No / N/A", "", "No"])
-
-def rows():
-    secs_common = [("All surveys", COMMON)]
-    for k, label in WORKS.items():
-        for s in T.get(k, []):
-            secs_common.append((label, s))
-    secs_common.append(("All surveys", CLOSE))
-    for survey, sec in secs_common:
-        for q in sec["qs"]:
-            qid, text, typ = q[0], q[1], q[2]
-            opts = q[3] if len(q) > 3 and q[3] else (["Yes", "No", "N/A"] if typ == "yn" else [])
-            flag = q[4] if len(q) > 4 and q[4] else ""
-            yield [survey, sec["title"], text, TYPE[typ], ", ".join(opts) if typ != "yn" else "", flag]
-
-ws = wb.create_sheet("Current questions")
-header(ws, 1, Q_TITLES, [18, 18, 52, 18, 40, 22, 16, 44])
-rr = 2
-for row in rows():
-    for i, v in enumerate(row, 1):
-        c = ws.cell(row=rr, column=i, value=v); c.font = font(color=RED if (i == 6 and v) else INK)
-        c.alignment = Alignment(vertical="top", wrap_text=True); c.border = box
-    rr += 1
-last = rr - 1
-inputs(ws, 2, last, 0)
-for r_ in range(2, last + 1):
-    for col in (7, 8):
-        c = ws.cell(row=r_, column=col); c.fill = PatternFill("solid", fgColor=INPUT); c.border = box
-        c.font = font(); c.alignment = Alignment(vertical="top", wrap_text=True)
-dv = DataValidation(type="list", formula1='"Keep,Change,Remove"', allow_blank=True)
-ws.add_data_validation(dv); dv.add(f"G2:G{last}")
-ws.freeze_panes = "D2"; ws.auto_filter.ref = f"A1:H{last}"
-
-nq = wb.create_sheet("New questions")
-header(nq, 1, Q_TITLES[:6] + ["Why it's needed"], [18, 18, 52, 18, 40, 22, 44])
-inputs(nq, 2, 101, 7)
-survey_list = '"All surveys,' + ",".join(WORKS.values()) + '"'
-dv1 = DataValidation(type="list", formula1=survey_list, allow_blank=True); nq.add_data_validation(dv1); dv1.add("A2:A101")
-dv2 = DataValidation(type="list", formula1='"' + ",".join(TYPE.values()) + '"', allow_blank=True); nq.add_data_validation(dv2); dv2.add("D2:D101")
-nq.freeze_panes = "A2"
-wb.active = 0
-wb.save(OUT + "CB Site App - Survey Questions Template.xlsx")
+# Survey questions template is built live by the app (lib/template.js), from the questions in use
 
 # ---------------- 3. Projects & contractors ----------------
 wb = Workbook()
