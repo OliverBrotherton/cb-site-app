@@ -67,11 +67,11 @@ Projects tab > **Add a project manager**: name, work email and a PIN (one is mad
 If `/api/health` says the database needs updating, open `supabase/schema.sql` on GitHub, copy it, paste it into the Supabase SQL Editor and click **Run**. It's safe to run again and never deletes data.
 
 ## Changing survey questions
-Admin only, in the app: **Projects tab > Survey questions**.
+In the app: **Projects tab > Survey questions**. PMs can change the questions on projects they run; the admin can also change the **company questions**, which every project uses unless it has its own.
 1. **Download template.** It's built from the questions in use right now.
 2. Change wording, answer types, options (separated by `;`) or red-flag answers in the yellow cells. Pick **Remove** to drop a question, and add new ones on the **New questions** tab.
 3. **Upload edited template.** The app lists every change, and any mistakes, before anything is saved. Tap **Apply changes**.
-4. **Undo last change** puts the previous questions back.
+4. **Undo last change** puts the previous questions back. **Go back to the company questions** removes a project's own set.
 
 New surveys use the new questions straight away. Surveys already done keep their answers and photos. The built-in questions in `public/questions.js` are only used until the first upload. The other two Excel templates are rebuilt with `python3 tools/build_templates.py`.
 

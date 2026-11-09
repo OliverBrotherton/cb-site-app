@@ -58,7 +58,7 @@ async function load(){
   loading=(async()=>{
     try{
       const d=await api('data');
-      S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions&&d.questions.value);
+      S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions);
       for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]],['delays',d.delays||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
@@ -291,12 +291,16 @@ function projectsBody(){
     const props=[...S.props.values()].filter(p=>p.project_id===pr.id);const ids=new Set(props.map(p=>p.id));
     const open=[...S.snags.values()].filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;const cs=contractorsOf(pr.id);
     return`<button type="button" class="row" data-act="open-project" data-id="${pr.id}"><div class="main"><span class="t">${esc(pr.name)}</span><span class="s"><span>${props.length} address${props.length===1?'':'es'}</span><span>${cs.length} contractor${cs.length===1?'':'s'}</span>${pr.manages?`<span class="mono">PIN ${esc(pr.pin)}</span>`:''}${S.role==='admin'?`<span>${esc((S.pms.get(pr.pm_id)||{}).name||'Run by you')}</span>`:''}</span></div><div class="end">${open?`<span class="badge-snags">${open} open</span>`:''}</div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`;
+  if(canManage()){
+    const mine=list.filter(pr=>pr.manages);
+    const qs=S.questions||{};const stamp=x=>x&&x.value?`Changed ${fmtDate(x.updated_at)}${x.updated_by?' by '+esc(x.updated_by):''}`:'';
+    const rows=[...(S.role==='admin'?[['','Company questions',stamp(qs.company)||'The original questions','Used on every project that hasn\'t got its own']]:[]),
+      ...mine.map(pr=>{const own=(qs.projects||{})[pr.id];return[pr.id,pr.name,own&&own.value?'Own questions · '+stamp(own):'Uses the company questions','']})];
+    if(rows.length)out+=`<div class="section-h"><h3>Survey questions</h3></div>
+    <p class="meta" style="margin:-8px 0 0">Change the survey questions${S.role==='admin'?' for everyone, or':''} for a project you run. Download the template, edit it in Excel, then upload it.</p>
+    <div class="list">${rows.map(([id,t,st,h])=>`<button type="button" class="row" data-act="q-scope" data-id="${esc(id)}"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${st}</span>${h?`<span>${esc(h)}</span>`:''}</span></div><span class="chev">${I.chev}</span></button>`).join('')}</div>`;
+  }
   if(S.role==='admin'){
-    const q=S.questions;
-    out+=`<div class="section-h"><h3>Survey questions</h3></div>
-    <div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="meta">${q?`Last changed ${fmtDate(q.updated_at)}${q.updated_by?' by '+esc(q.updated_by):''}`:'Using the original questions'}</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="q-template">${I.dl} Download template</button><label class="btn primary" style="cursor:pointer">${I.up} Upload edited template<input type="file" accept=".xlsx" id="q-upload" hidden></label>${q?`<button type="button" class="btn" data-act="q-undo">Undo last change</button>`:''}</div>
-    <p class="meta" style="margin:0">Download the template, change the questions in Excel, then upload it here. You'll see every change before anything is saved.</p></div>`;
     const pms=[...S.pms.values()].sort((a,b)=>a.name.localeCompare(b.name));
     out+=`<div class="section-h"><h3>Project managers</h3><span class="meta">${pms.length}</span></div>
     <p class="meta" style="margin:-8px 0 0">Give each PM their own PIN. They can set up and run their own projects, and only see theirs.</p>
@@ -414,25 +418,26 @@ const TEMPLATE_FILES=[
   ['CB Site App - Address Upload Template.xlsx','Address upload','Fill in and upload under Addresses > Add addresses.'],
   ['CB Site App - Projects and Contractors Setup.xlsx','Projects & contractors setup','Gather PINs, emails and contractors before setting up a project.']];
 const templateUrl=f=>'/templates/'+encodeURIComponent(f);
-function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list"><button type="button" class="row" data-act="q-template"><div class="main"><span class="t">Survey questions</span><span class="s"><span>The questions the app is using now.${S.role==='admin'?' Mark up changes and upload it on the Projects tab.':' Mark up changes and send it to your admin.'}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</button>${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
+function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list"><button type="button" class="row" data-act="q-template"><div class="main"><span class="t">Survey questions</span><span class="s"><span>The questions ${S.projects.size===1?'this project uses':'the app is using'} now.${canManage()?' Change them on the Projects tab.':' Mark up changes and send it to your project manager.'}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</button>${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
 
 /* ---------- survey questions upload ---------- */
 const TYPE_LABELS={yn:'Yes / No / N/A',choice:'Pick one',multi:'Tick all that apply',number:'Number',text:'Free text'};
 const typeFromLabel=v=>{v=String(v||'').trim().toLowerCase();for(const [k,l] of Object.entries(TYPE_LABELS))if(l.toLowerCase()===v||k===v)return k;if(/yes|y\/n/.test(v))return'yn';if(/tick|multi/.test(v))return'multi';if(/pick|choice|one/.test(v))return'choice';if(/num/.test(v))return'number';if(/text|free/.test(v))return'text';return''};
 // Options are separated by semicolons; commas work too when no option needs one
 const splitOpts=v=>{v=String(v||'');return v.split(/[;\n]/.test(v)?/[;\n]/:/,/).map(x=>x.trim()).filter(Boolean)};
-async function downloadQuestionsTemplate(btn){
+const scopeName=pid=>pid?((S.projects.get(pid)||{}).name||'Project'):'Company questions (all projects)';
+async function downloadQuestionsTemplate(btn,pid){
   const h={'content-type':'application/json'};if(S.token)h.authorization='Bearer '+S.token;if(S.name)h['x-name']=encodeURIComponent(S.name);
   if(btn)btn.disabled=true;
   try{
-    const r=await fetch('/api/questions-template',{method:'POST',headers:h,body:JSON.stringify({questions:{COMMON,TEMPLATES,CLOSE},works:WORKS})});
+    const r=await fetch('/api/questions-template',{method:'POST',headers:h,body:JSON.stringify({questions:qsetFor(pid||null),works:WORKS,project_id:pid||null,scope:scopeName(pid)})});
     if(!r.ok){const j=await r.json().catch(()=>({}));throw{message:j.error||'The template couldn\'t be made. Try again.'}}
-    const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download='CB Site App - Survey Questions Template.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+    const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=`Survey questions - ${scopeName(pid).replace(/[\\/:*?"<>|]+/g,'')}.xlsx`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
   }catch(e){toast(e.message||'Download didn\'t work')}finally{if(btn)btn.disabled=false}
 }
 // Reads an edited template and works out exactly what would change
-function readQuestionsUpload(wb,X){
-  const q=JSON.parse(JSON.stringify({COMMON,TEMPLATES,CLOSE}));
+function readQuestionsUpload(wb,X,pid){
+  const q=JSON.parse(JSON.stringify(qsetFor(pid||null)));
   const errors=[],changes=[];
   const rowsOf=name=>{const n=wb.SheetNames.find(x=>x.toLowerCase()===name);return n?X.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''}):null};
   const cols=(head,map)=>Object.fromEntries(Object.entries(map).map(([k,re])=>[k,head.findIndex(h=>re.test(String(h)))]));
@@ -491,20 +496,41 @@ function readQuestionsUpload(wb,X){
   }
   return{q,errors,changes};
 }
-async function uploadQuestions(file){
+function questionsSheet(pid){
+  const qs=S.questions||{};const cur=pid?(qs.projects||{})[pid]:qs.company;const own=cur&&cur.value;
+  S.qScope=pid||null;
+  openSheet({title:'Survey questions',
+   body:`<div><h3 style="font-size:20px">${esc(scopeName(pid))}</h3><p class="meta" style="margin:4px 0 0">${own?`${pid?'This project has its own questions. ':''}Changed ${fmtDate(cur.updated_at)}${cur.updated_by?' by '+esc(cur.updated_by):''}.`:pid?'Uses the company questions. Upload a template to give this project its own.':'The original questions.'}</p></div>
+   <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+     <div><b>1.</b> Download the template. It has the questions ${pid?'this project':'every project'} uses now.</div>
+     <button type="button" class="btn" data-act="q-template" data-id="${esc(pid||'')}" style="align-self:flex-start">${I.dl} Download template</button>
+     <div><b>2.</b> Change the questions in Excel and save it.</div>
+     <div><b>3.</b> Upload it. You'll see every change before anything is saved.</div>
+     <label class="btn primary" style="cursor:pointer;align-self:flex-start">${I.up} Upload edited template<input type="file" accept=".xlsx" id="q-upload" hidden></label>
+   </div>
+   <p class="meta" style="margin:0">Changes apply to new surveys ${pid?'on this project only':'on every project without its own questions'}. Surveys already done keep their answers and photos.</p>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">${cur&&cur.canUndo?`<button type="button" class="btn" data-act="q-undo">Undo last change</button>`:''}${pid&&own?`<button type="button" class="btn danger" data-act="q-reset">Go back to the company questions</button>`:''}</div>`,
+   acts:{
+    'q-template':b=>downloadQuestionsTemplate(b,pid),
+    'q-undo':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap again to put the previous questions back';return}
+      try{await api('undoQuestions',{project_id:pid||null});await load();closeSheet();toast('Previous questions put back')}catch(e){toast(e.message)}},
+    'q-reset':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap again: new surveys use the company questions';return}
+      try{await api('resetQuestions',{project_id:pid});await load();closeSheet();toast('This project now uses the company questions')}catch(e){toast(e.message)}}}});
+}
+async function uploadQuestions(file,pid){
   try{
     toast('Reading '+file.name+'…');const X=await loadSheetJS();
     const wb=X.read(await file.arrayBuffer(),{type:'array'});
-    const {q,errors,changes}=readQuestionsUpload(wb,X);
+    const {q,errors,changes}=readQuestionsUpload(wb,X,pid);
     const groups={};changes.forEach(([k,v])=>(groups[k]=groups[k]||[]).push(v));
     const order=['Reworded','Answer type changed','Options changed','Red flag changed','Help text changed','Removed','New section','Added'];
     openSheet({title:'Check the changes',
      body:`${errors.length?`<div class="banner" style="background:var(--bad-soft);color:var(--bad)"><b>${errors.length} thing${errors.length>1?'s':''} to fix in the spreadsheet first</b><ul style="margin:8px 0 0;padding-left:18px">${errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`:''}
      ${!changes.length&&!errors.length?'<div class="empty"><h3>No changes found</h3><p>The file matches the questions the app is using now.</p></div>':''}
-     ${changes.length?`<p style="margin:0"><b>${changes.length} change${changes.length>1?'s':''}</b> will apply to <b>new surveys</b>. Surveys already done keep their answers and photos.</p>`:''}
+     ${changes.length?`<p style="margin:0"><b>${changes.length} change${changes.length>1?'s':''}</b> will apply to <b>new surveys ${pid?'on '+esc(scopeName(pid)):'on every project using the company questions'}</b>. Surveys already done keep their answers and photos.</p>`:''}
      ${order.filter(k=>groups[k]).map(k=>`<div class="field"><span class="lab">${esc(k)} (${groups[k].length})</span><div class="notes-box" style="white-space:normal">${groups[k].map(esc).join('<br>')}</div></div>`).join('')}`,
      foot:`<button type="button" class="btn" data-act="close-sheet">Cancel</button><button type="button" class="btn primary" data-act="q-apply" ${errors.length||!changes.length?'disabled':''}>Apply changes</button>`,
-     acts:{'q-apply':async b=>{b.disabled=true;try{await api('saveQuestions',{questions:q});await load();closeSheet();toast('Survey questions updated')}catch(e){b.disabled=false;toast(e.message)}}}});
+     acts:{'q-apply':async b=>{b.disabled=true;try{await api('saveQuestions',{questions:q,project_id:pid||null});await load();closeSheet();toast('Survey questions updated')}catch(e){b.disabled=false;toast(e.message)}}}});
   }catch(e){toast('Couldn\'t read that file. Use the survey questions template, saved as .xlsx.')}
 }
 
@@ -540,7 +566,7 @@ async function shrink(file){
 }
 const toB64=blob=>new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(String(f.result).split(',')[1]);f.onerror=rej;f.readAsDataURL(blob)});
 document.addEventListener('change',async e=>{
-  if(e.target.id==='q-upload'){const f=e.target.files[0];e.target.value='';if(f)uploadQuestions(f);return}
+  if(e.target.id==='q-upload'){const f=e.target.files[0];e.target.value='';if(f)uploadQuestions(f,S.qScope);return}
   const sel=e.target.closest&&e.target.closest('[data-sel]');
   if(sel){sel.checked?S.sel.add(sel.dataset.sel):S.sel.delete(sel.dataset.sel);const b=$('.selbar b');if(b)b.textContent=S.sel.size+' picked';return}
   const inp=e.target.closest&&e.target.closest('[data-photo-input]');if(!inp)return;
@@ -685,7 +711,7 @@ function qControl([id,label,type,opts,flag,help],a){
   return`<div class="field">${lab}${help?`<p class="help">${esc(help)}</p>`:''}${c}</div>`;
 }
 function surveySheet(p,sv){
-  const secs=surveySections(sv.type,sv);const a=sv.answers||{};const total=secs.reduce((n,s)=>n+s.qs.length,0);
+  const secs=surveySections(sv.type,sv,p.project_id||null);const a=sv.answers||{};const total=secs.reduce((n,s)=>n+s.qs.length,0);
   const body=`<p class="meta" style="margin:0">${esc(p.address)} · <span class="mono">${esc(p.postcode)}</span>${sv.status==='submitted'?` · Submitted ${fmtDate(sv.submitted_at)}`:''}</p>
    <p class="meta" style="margin:0">Answers in <b style="color:var(--red)">red</b> are things the PM needs to know about.</p>
    ${sv.id?`<button type="button" class="btn" data-act="sv-pdf" style="align-self:flex-start">${I.dl} Download PDF</button>`:''}
@@ -978,9 +1004,8 @@ document.addEventListener('click',e=>{
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
     case'asb-f':S.asb=t.dataset.v;renderBody();break;
-    case'q-template':downloadQuestionsTemplate(t);break;
-    case'q-undo':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again to go back to the previous questions';return}
-      api('undoQuestions',{}).then(()=>load()).then(()=>toast('Previous questions put back')).catch(err=>toast(err.message));break;
+    case'q-template':{const ids=[...S.projects.keys()];downloadQuestionsTemplate(t,ids.length===1?ids[0]:null);break}
+    case'q-scope':questionsSheet(t.dataset.id||null);break;
     case'delay-f':S.delayF=!S.delayF;renderBody();break;
     case'new-delay':delaySheet(S.props.get(S.view.id));break;
     case'open-delay':{const d=S.delays.get(t.dataset.id);const p=d&&S.props.get(d.property_id);if(p)delaySheet(p,d);break}

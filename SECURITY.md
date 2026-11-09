@@ -11,8 +11,8 @@ For IT or anyone carrying out a security test. Describes how access works, what 
 ## Who can do what
 | Role | How they get in | Can do |
 |---|---|---|
-| Admin | `ADMIN_PIN` env var | Everything, including managing PMs and changing the survey questions |
-| Project manager | Own 6-digit PIN (`pms` table) | Create and run their own projects, contractors and PINs. Site work on their projects |
+| Admin | `ADMIN_PIN` env var | Everything, including managing PMs and changing the company survey questions |
+| Project manager | Own 6-digit PIN (`pms` table) | Create and run their own projects, contractors and PINs, and change survey questions on those projects. Site work on their projects |
 | Site team | Project's 6-digit PIN | Addresses, surveys and snags on that project only. No setup screens |
 | Contractor (incl. scaffolders) | 24-character random token in their email link (about 119 bits) | See their own snags and scaffold call-offs; close snags out / confirm and mark scaffold struck, with a photo. See asbestos info for those addresses only. Nothing else |
 

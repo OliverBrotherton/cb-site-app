@@ -346,7 +346,9 @@ try {
   // ---------- survey questions: download, edit, upload, undo ----------
   const ExcelJS = (await import('exceljs')).default;
   await admin.click('.nav [data-tab=projects]');
-  const [qdl] = await Promise.all([admin.waitForEvent('download'), admin.click('.panel [data-act=q-template]')]);
+  ok(await admin.isVisible('[data-act=q-scope][data-id=""]'), 'admin can change the company questions');
+  await admin.click(`[data-act=q-scope][data-id="${leedsId}"]`);
+  const [qdl] = await Promise.all([admin.waitForEvent('download'), admin.click('#sheet [data-act=q-template]')]);
   const qPath = (SHOTS || '/tmp') + '/questions.xlsx'; await qdl.saveAs(qPath);
   const wbq = new ExcelJS.Workbook(); await wbq.xlsx.readFile(qPath);
   const cq = wbq.getWorksheet('Current questions');
@@ -366,6 +368,7 @@ try {
   await admin.waitForSelector('text=Check the changes');
   ok(await admin.isVisible('text=thing to fix') && await admin.isDisabled('[data-act=q-apply]'), 'mistakes in the upload are listed and block saving');
   await admin.click('[data-act=close-sheet]');
+  await admin.click(`[data-act=q-scope][data-id="${leedsId}"]`);
   await admin.setInputFiles('#q-upload', goodPath);
   await admin.waitForSelector('text=Check the changes');
   const preview = await admin.textContent('#sheet');
@@ -373,7 +376,14 @@ try {
   ok(preview.includes('Was the tenant home?') && preview.includes('Removed (1)') && preview.includes('Added (2)') && preview.includes('New section (1)'), 'preview shows every change before saving');
   await shot(admin, '16-questions-preview');
   await admin.click('[data-act=q-apply]'); await toastHas(admin, 'Survey questions updated');
-  ok((await api('saveQuestions', { questions: {} }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot change questions');
+  ok((await api('saveQuestions', { questions: {}, project_id: leedsId }, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot change questions');
+  ok((await api('saveQuestions', { questions: {}, project_id: leedsId }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot change another PM\'s project questions');
+  ok((await api('saveQuestions', { questions: {} }, { authorization: 'Bearer ' + pmTok })).ok === false, 'PM cannot change the company questions');
+  const pmQ = (await api('data', {}, { authorization: 'Bearer ' + pmTok })).data;
+  const pmCur = (await api('currentQuestions', { project_id: pmQ.projects[0].id }, { authorization: 'Bearer ' + pmTok })).data;
+  ok((await api('saveQuestions', { questions: pmCur, project_id: pmQ.projects[0].id }, { authorization: 'Bearer ' + pmTok })).ok === true, 'PM can save questions for their own project');
+  await pmPage.reload(); await pmPage.waitForSelector('#vbody'); await pmPage.click('.nav [data-tab=projects]');
+  ok(await pmPage.isVisible(`[data-act=q-scope][data-id="${pmQ.projects[0].id}"]`) && !(await pmPage.isVisible('[data-act=q-scope][data-id=""]')), 'PM can change questions on their own project only');
 
   await admin.click('.nav [data-tab=addresses]');
   await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
@@ -386,8 +396,14 @@ try {
   await admin.click('[data-act=open-survey]');
   ok(await admin.isVisible('#sv-form >> text=Suspected asbestos seen in the work area?') && await admin.isVisible('[data-photos=sec0] img[data-act=view-photo]'), 'old survey keeps its answers and photos');
   await admin.click('[data-act=close-sheet]');
+  await admin.click('[data-act=back]');
+  await admin.click('[data-act=open-prop] >> text=3 Oak Road');
+  await admin.click('[data-act=new-survey]'); await admin.click('[data-act=pick-type][data-v=kitchen]');
+  ok((await admin.textContent('#sv-form')).includes('Was the tenant in?'), 'other projects keep the company questions');
+  await admin.click('[data-act=close-sheet]');
 
   await admin.click('.nav [data-tab=projects]');
+  await admin.click(`[data-act=q-scope][data-id="${leedsId}"]`);
   await admin.click('[data-act=q-undo]'); await admin.click('[data-act=q-undo]');
   await toastHas(admin, 'Previous questions put back');
   await admin.click('.nav [data-tab=addresses]');

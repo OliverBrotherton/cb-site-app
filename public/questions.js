@@ -55,11 +55,23 @@ function keySections(q){
 }
 keySections({COMMON,TEMPLATES,CLOSE});
 const DEFAULT_QUESTIONS=JSON.parse(JSON.stringify({COMMON,TEMPLATES,CLOSE}));
-function useQuestions(q){q=keySections(JSON.parse(JSON.stringify(q||DEFAULT_QUESTIONS)));COMMON=q.COMMON;TEMPLATES=q.TEMPLATES;CLOSE=q.CLOSE}
-// sv given: removed questions still show where that survey answered them. Empty sections are dropped.
-function surveySections(type,sv){
-  const a=(sv&&sv.answers)||{};
-  return [COMMON,...(TEMPLATES[type]||[]),CLOSE].map(s=>({title:s.title,pkey:s===CLOSE?(CLOSE.keyBy[type]||'secZ'):s.key,qs:s.qs.filter(q=>!q[6]||a[q[0]]!=null)})).filter(s=>s.qs.length);
+// Question sets: the company one, and any project's own. Built once per load and reused.
+let QSETS={company:null,projects:{}};const QCACHE={};
+function useQuestions(q){
+  QSETS={company:(q&&q.company&&q.company.value)||null,projects:Object.fromEntries(Object.entries((q&&q.projects)||{}).filter(([,v])=>v&&v.value).map(([k,v])=>[k,v.value]))};
+  for(const k in QCACHE)delete QCACHE[k];
+  const c=qsetFor(null);COMMON=c.COMMON;TEMPLATES=c.TEMPLATES;CLOSE=c.CLOSE;
+}
+function qsetFor(pid){
+  const k=pid&&QSETS.projects[pid]?pid:'_company';
+  if(!QCACHE[k])QCACHE[k]=keySections(JSON.parse(JSON.stringify(k==='_company'?(QSETS.company||DEFAULT_QUESTIONS):QSETS.projects[pid])));
+  return QCACHE[k];
+}
+// Uses the survey's project's questions (pid, or worked out from the survey's address)
+function surveySections(type,sv,pid){
+  if(pid===undefined&&sv&&sv.property_id&&typeof S!=='undefined'){const p=S.props.get(sv.property_id);pid=p&&p.project_id}
+  const q=qsetFor(pid);const a=(sv&&sv.answers)||{};
+  return [q.COMMON,...(q.TEMPLATES[type]||[]),q.CLOSE].map(s=>({title:s.title,pkey:s===q.CLOSE?(q.CLOSE.keyBy[type]||'secZ'):s.key,qs:s.qs.filter(x=>!x[6]||a[x[0]]!=null)})).filter(s=>s.qs.length);
 }
 
 

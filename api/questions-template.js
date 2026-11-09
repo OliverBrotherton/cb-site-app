@@ -7,8 +7,8 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
     const { app } = getApp();
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const questions = await app.rpc({ action: 'currentQuestions', payload: { fallback: body.questions } }, req.headers, '');
-    const buf = await buildQuestionsTemplate(questions, body.works || {});
+    const questions = await app.rpc({ action: 'currentQuestions', payload: { fallback: body.questions, project_id: body.project_id } }, req.headers, '');
+    const buf = await buildQuestionsTemplate(questions, body.works || {}, String(body.scope || '').slice(0, 120));
     res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="CB Site App - Survey Questions Template.xlsx"', 'Cache-Control': 'no-store' });
     res.end(Buffer.from(buf));
   } catch (e) {
