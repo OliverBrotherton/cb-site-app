@@ -30,12 +30,12 @@ let toastT;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3400)}
 
 /* ---------- state ---------- */
-const S={token:'',ctoken:'',name:'',role:'',mode:'pm',ready:false,emailReady:false,
+const S={token:'',ctoken:'',name:'',email:'',role:'',mode:'pm',ready:false,emailReady:false,
  pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),asb:'all',delayF:false,
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
-function save(){try{localStorage.setItem('cbsa',JSON.stringify({token:S.token,name:S.name}))}catch(e){}}
+function save(){try{localStorage.setItem('cbsa',JSON.stringify({token:S.token,name:S.name,email:S.email}))}catch(e){}}
 
 /* ---------- server ---------- */
 async function api(action,payload){
@@ -144,6 +144,12 @@ const contractorsOf=pid=>[...S.contractors.values()].filter(c=>c.project_id===pi
 const canManage=()=>S.role==='admin'||S.role==='pm';
 const contractorLink=c=>c&&c.token?location.origin+'/?c='+c.token:'';
 function projectList(){return[...S.projects.values()].sort((a,b)=>a.name.localeCompare(b.name))}
+
+/* ---------- copy me in ---------- */
+function copyMeField(id,what){return`<div class="field" id="${id}-row"><label class="check"><input type="checkbox" id="${id}" ${S.email?'checked':''}><span><b>Copy me in</b><br><span class="meta">${what}</span></span></label><input id="${id}-email" class="inp" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="your.name@chasberger.co.uk" value="${esc(S.email)}" aria-label="Your work email"></div>`}
+// Returns the email to copy in ('' if not ticked), or null if ticked but missing
+function copyMeValue(id){if(!$('#'+id)||!$('#'+id).checked)return'';const v=$('#'+id+'-email').value.trim();return v||null}
+function rememberEmail(v){if(v&&v!==S.email){S.email=v;save()}}
 
 /* ---------- delays ---------- */
 const isoDay=iso=>new Date(iso+'T12:00').getTime();
@@ -307,7 +313,7 @@ function projectsBody(){
     ${pms.length?`<div class="list">${pms.map(m=>{const n=[...S.projects.values()].filter(p=>p.pm_id===m.id).length;return`<button type="button" class="row" data-act="open-pm" data-id="${m.id}"><div class="main"><span class="t">${esc(m.name)}</span><span class="s"><span>${esc(m.email||'')}</span><span class="mono">PIN ${esc(m.pin)}</span><span>${n} project${n===1?'':'s'}</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
     <button type="button" class="btn" data-act="new-pm" style="align-self:flex-start">${I.plus} Add a project manager</button>`;
   }
-  return out+`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div><b>On this phone</b><div class="meta">${esc(S.name||'No name')} · ${S.role==='admin'?'Admin (all projects)':S.role==='pm'?'Project manager':'Site team'}</div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="change-name">Change my name</button><button type="button" class="btn danger" data-act="sign-out">Lock this phone</button></div></div>`;
+  return out+`<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div><b>On this phone</b><div class="meta">${esc(S.name||'No name')}${S.email?' · '+esc(S.email):''} · ${S.role==='admin'?'Admin (all projects)':S.role==='pm'?'Project manager':'Site team'}</div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="change-name">Change my name or email</button><button type="button" class="btn danger" data-act="sign-out">Lock this phone</button></div></div>`;
 }
 function genPin(){const b=new Uint32Array(1);crypto.getRandomValues(b);return String(100000+b[0]%900000)}
 function projectSheet(pr){
@@ -374,8 +380,8 @@ function addPinSheet(){
    acts:{'ap-go':async btn=>{btn.disabled=true;try{const r=await api('login',{pin:$('#ap-pin').value.trim(),current:S.token});S.token=r.token;save();await load();closeSheet();toast(r.project?r.project+' added':'Done')}catch(e){btn.disabled=false;toast(e.message)}}}});
 }
 function nameSheet(){
-  openSheet({title:'Your name',body:`<div class="field"><label for="nm">Name shown on snags and surveys you raise</label><input id="nm" class="inp" value="${esc(S.name)}"></div>`,foot:`<button type="button" class="btn primary" data-act="nm-save">Save</button>`,
-   acts:{'nm-save':()=>{const v=$('#nm').value.trim();if(!v){toast('Put your name in');return}S.name=v;save();closeSheet();renderBody();toast('Saved')}}});
+  openSheet({title:'Your details',body:`<div class="field"><label for="nm">Name shown on snags and surveys you raise</label><input id="nm" class="inp" value="${esc(S.name)}"></div><div class="field"><label for="nm-e">Work email</label><p class="help">So you can be copied into the snag and scaffold emails you send.</p><input id="nm-e" class="inp" type="email" inputmode="email" autocapitalize="off" value="${esc(S.email)}" placeholder="your.name@chasberger.co.uk"></div>`,foot:`<button type="button" class="btn primary" data-act="nm-save">Save</button>`,
+   acts:{'nm-save':()=>{const v=$('#nm').value.trim();if(!v){toast('Put your name in');return}S.name=v;S.email=$('#nm-e').value.trim();save();closeSheet();renderBody();toast('Saved')}}});
 }
 
 /* ---------- reports ---------- */
@@ -742,7 +748,8 @@ function newSnagSheet(pid){
    <div class="field"><label for="sn-t">2. What's wrong?</label><input id="sn-t" class="inp" placeholder="e.g. Worktop joint not sealed by sink" maxlength="140"></div>
    <div class="field"><label for="sn-l">3. Where?</label><input id="sn-l" class="inp" list="rooms" placeholder="e.g. Kitchen"><datalist id="rooms">${ROOMS.map(r=>`<option value="${r}">`).join('')}</datalist></div>
    <div class="field"><label for="sn-c">4. Who's fixing it?</label><select id="sn-c" class="inp"></select><p class="help" id="sn-c-help"></p></div>
-   <label class="check" id="sn-mail-row" hidden><input type="checkbox" id="sn-mail" checked><span><b>Email it to them now</b><br><span class="meta" id="sn-mail-to"></span></span></label>
+   <div id="sn-mail-row" hidden style="display:flex;flex-direction:column;gap:14px"><label class="check"><input type="checkbox" id="sn-mail" checked><span><b>Email it to them now</b><br><span class="meta" id="sn-mail-to"></span></span></label>
+   ${copyMeField('sn-cc','Get a copy of this email, and of their close-out when it\'s done.')}</div>
    <div class="field"><span class="lab">5. How urgent?</span><div class="opts yn">${['Low','Medium','High'].map(x=>`<label class="opt"><input type="radio" name="sn-pr" value="${x}" ${x==='Medium'?'checked':''} ${x==='High'?'data-flag':''}><span>${x}</span></label>`).join('')}</div></div>
    <div class="field"><label for="sn-d">Fix by (optional)</label><input id="sn-d" class="inp" type="date" min="${todayISO()}"></div>
    <div class="field"><label for="sn-tr">Trade (optional)</label><select id="sn-tr" class="inp"><option value="">Not sure</option>${TRADES.map(t=>`<option>${t}</option>`).join('')}</select></div>
@@ -766,9 +773,11 @@ function newSnagSheet(pid){
      if(!title){toast('Say what\'s wrong in a few words');$('#sn-t').focus();return}
      if(photosBusy()){toast('Wait for photos to finish uploading');return}
      const contractor_id=$('#sn-c').value||null;const sendEmail=!!contractor_id&&$('#sn-mail').checked;
+     const ccEmail=contractor_id?copyMeValue('sn-cc'):'';if(ccEmail===null){toast('Put your work email in, or untick Copy me in');$('#sn-cc-email').focus();return}
      btn.disabled=true;btn.textContent=sendEmail?'Saving and emailing…':'Saving…';
      try{
-       const r=await api('createSnag',{property_id,contractor_id,title,location:$('#sn-l').value,trade:$('#sn-tr').value,priority:(document.querySelector('input[name="sn-pr"]:checked')||{}).value,due:$('#sn-d').value,notes:$('#sn-n').value,photos:photoPaths('snag'),sendEmail});
+       const r=await api('createSnag',{property_id,contractor_id,title,location:$('#sn-l').value,trade:$('#sn-tr').value,priority:(document.querySelector('input[name="sn-pr"]:checked')||{}).value,due:$('#sn-d').value,notes:$('#sn-n').value,photos:photoPaths('snag'),sendEmail,ccEmail});
+       rememberEmail(ccEmail);
        await load();closeSheet();
        const c=contractor_id&&S.contractors.get(contractor_id);
        toast(!sendEmail?'Snag raised':r.snag.email_status==='sent'?`Snag raised and emailed to ${c?c.name:'the contractor'}`:'Snag saved, but the email didn\'t send. Open it to try again or copy the email.');
@@ -863,15 +872,17 @@ function newScaffoldSheet(p){
    <div class="field"><span class="lab">3. Before calling it off, check</span><div style="display:flex;flex-direction:column;gap:10px">${SCAFF_CHECKS.map((x,i)=>`<label class="check"><input type="checkbox" name="sf-k" value="${esc(x)}"><span>${esc(x)}</span></label>`).join('')}</div></div>
    <div class="field"><label for="sf-n">Notes for the scaffolder (optional)</label><textarea id="sf-n" class="inp" rows="3" placeholder="e.g. Access via rear lane. Tenant's car on the drive after 5pm."></textarea></div>
    <div class="field"><span class="lab">Photos (optional)</span>${photoField('sf')}</div>
-   <label class="check"><input type="checkbox" id="sf-mail" checked><span><b>Email the scaffolder now</b><br><span class="meta" id="sf-to"></span></span></label>`,
+   <label class="check"><input type="checkbox" id="sf-mail" checked><span><b>Email the scaffolder now</b><br><span class="meta" id="sf-to"></span></span></label>
+   ${copyMeField('sf-cc','Get a copy of the call-off, and of the scaffolder\'s date confirmation and "struck" notice.')}`,
    foot:`<button type="button" class="btn primary" data-act="sf-save">Call off scaffold</button>`,
    mount(sh){const to=()=>{const c=S.contractors.get($('#sf-c').value);const pr=S.projects.get(p.project_id)||{};$('#sf-to').textContent=c?`To ${c.email}${pr.pm_email?', copy to '+pr.pm_email:''}`:''};$('#sf-c',sh).addEventListener('change',to);to()},
    acts:{'sf-save':async b=>{
      const checks=[...document.querySelectorAll('input[name="sf-k"]:checked')].map(i=>i.value);
      if(checks.length<SCAFF_CHECKS.length&&b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`${SCAFF_CHECKS.length-checks.length} check${SCAFF_CHECKS.length-checks.length>1?'s':''} not ticked. Tap again to call off anyway`;return}
      if(photosBusy()){toast('Wait for photos to finish uploading');return}
+     const ccEmail=copyMeValue('sf-cc');if(ccEmail===null){toast('Put your work email in, or untick Copy me in');$('#sf-cc-email').focus();return}
      const sendEmail=$('#sf-mail').checked;b.disabled=true;b.textContent=sendEmail?'Sending…':'Saving…';
-     try{const r=await api('createScaffold',{property_id:p.id,contractor_id:$('#sf-c').value,strike_date:$('#sf-d').value,checks,notes:$('#sf-n').value,photos:photoPaths('sf'),sendEmail});await load();closeSheet();toast(!sendEmail?'Call-off saved':r.scaffold.email_status==='sent'?'Scaffold called off and emailed':'Saved, but the email didn\'t send. Open it to try again.')}
+     try{const r=await api('createScaffold',{property_id:p.id,contractor_id:$('#sf-c').value,strike_date:$('#sf-d').value,checks,notes:$('#sf-n').value,photos:photoPaths('sf'),sendEmail,ccEmail});rememberEmail(ccEmail);await load();closeSheet();toast(!sendEmail?'Call-off saved':r.scaffold.email_status==='sent'?'Scaffold called off and emailed':'Saved, but the email didn\'t send. Open it to try again.')}
      catch(e){b.disabled=false;b.textContent='Call off scaffold';toast(e.message)}
    }}});
 }
@@ -1044,6 +1055,6 @@ setInterval(()=>{if(!document.hidden&&S.ready)load()},30000);
 (function boot(){
   const c=new URLSearchParams(location.search).get('c');
   if(c){S.ctoken=c;S.mode='contractor';startApp();return}
-  const sv=saved();S.name=sv.name||'';S.token=sv.token||'';
+  const sv=saved();S.name=sv.name||'';S.token=sv.token||'';S.email=sv.email||'';
   if(S.token)startApp();else showGate();
 })();

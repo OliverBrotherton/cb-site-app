@@ -83,10 +83,15 @@ try {
   ok((await admin.inputValue('#sn-c')) !== '', 'only contractor pre-selected');
   ok((await admin.textContent('#sn-mail-to')).includes('copy to pm@chasberger.co.uk'), 'email shows PM copy');
   await shot(admin, '05-snag-form');
+  ok(await admin.isVisible('#sn-cc-email'), 'Copy me in box shows for contractor snags');
+  await admin.check('#sn-cc'); await admin.fill('#sn-cc-email', 'tom@gmail.com');
+  await admin.click('[data-act=sn-save]');
+  await toastHas(admin, 'chasberger.co.uk email');
+  await admin.fill('#sn-cc-email', 'tom.site@chasberger.co.uk');
   await admin.click('[data-act=sn-save]');
   await toastHas(admin, 'emailed to Smith Plumbing');
   let em = await emails();
-  ok(em.length === 1 && em[0].to === 'snags@smithplumbing.co.uk' && em[0].cc === 'pm@chasberger.co.uk' && em[0].attachments === 1, 'contractor email sent with photo, PM copied');
+  ok(em.length === 1 && em[0].to === 'snags@smithplumbing.co.uk' && JSON.stringify(em[0].cc) === JSON.stringify(['pm@chasberger.co.uk', 'tom.site@chasberger.co.uk']) && em[0].attachments === 1, 'contractor email sent with photo, PM and site manager copied');
   const link = em[0].text.match(/http:\/\/\S+\?c=\w+/)[0];
   ok(!!link, 'email contains contractor link');
 
@@ -135,7 +140,7 @@ try {
   await con.click('[data-act=fx-save]');
   await toastHas(con, 'Closed out');
   em = await emails();
-  ok(em.length === 2 && em[1].to === 'pm@chasberger.co.uk' && em[1].subject.startsWith('Done - check it'), 'PM told when contractor closes out');
+  ok(em.length === 2 && em[1].to === 'pm@chasberger.co.uk' && JSON.stringify(em[1].cc) === JSON.stringify(['tom.site@chasberger.co.uk']) && em[1].subject.startsWith('Done - check it'), 'PM told when contractor closes out, site manager copied');
   // contractor cannot see anything else
   const cdata = (await api('data', {}, { 'x-contractor': link.split('c=')[1] })).data;
   ok(cdata.properties.length === 1 && cdata.surveys.length === 0 && !cdata.contractors[0].email, 'contractor only sees their own snag');
@@ -204,13 +209,14 @@ try {
   ok((await admin.locator('#sf-c option').count()) === 1, 'only scaffolders offered');
   await admin.click('label.check:has(input[value="All work at height finished"])');
   await shot(admin, '13-scaffold');
+  ok((await admin.inputValue('#sf-cc-email')) === 'tom.site@chasberger.co.uk' && await admin.isChecked('#sf-cc'), 'phone remembers the email for next time');
   await admin.click('[data-act=sf-save]');
   ok((await admin.textContent('[data-act=sf-save]')).includes('not ticked'), 'warns when pre-strike checks are missing');
   await admin.click('[data-act=sf-save]');
   await toastHas(admin, 'Scaffold called off and emailed');
   em = await emails();
   const sEmail = em[em.length - 1];
-  ok(sEmail.to === 'jobs@acmescaff.co.uk' && sEmail.cc === 'pm@chasberger.co.uk' && sEmail.subject.startsWith('Scaffold strike SC-0001') && sEmail.text.includes('ASBESTOS: PRESENT'), 'scaffolder emailed with call-off and asbestos warning');
+  ok(sEmail.to === 'jobs@acmescaff.co.uk' && JSON.stringify(sEmail.cc) === JSON.stringify(['pm@chasberger.co.uk', 'tom.site@chasberger.co.uk']) && sEmail.subject.startsWith('Scaffold strike SC-0001') && sEmail.text.includes('ASBESTOS: PRESENT'), 'scaffolder emailed with call-off and asbestos warning');
   const sLink = sEmail.text.match(/http:\/\/\S+\?c=\w+/)[0];
   const scaf = await b.newPage(phone);
   await scaf.goto(sLink); await scaf.waitForSelector('[data-act=open-scaffold]');
@@ -219,7 +225,7 @@ try {
   await scaf.click('[data-act=open-scaffold]');
   await scaf.click('[data-act=cf-ok]'); await toastHas(scaf, 'Date confirmed');
   em = await emails();
-  ok(em[em.length - 1].to === 'pm@chasberger.co.uk' && em[em.length - 1].subject.startsWith('Strike date confirmed'), 'PM told the strike date is confirmed');
+  ok(em[em.length - 1].to === 'pm@chasberger.co.uk' && JSON.stringify(em[em.length - 1].cc) === JSON.stringify(['tom.site@chasberger.co.uk']) && em[em.length - 1].subject.startsWith('Strike date confirmed'), 'PM told the strike date is confirmed, site manager copied');
   await scaf.click('[data-act=open-scaffold]');
   await scaf.click('[data-act=cf-struck]'); await toastHas(scaf, 'Add a photo');
   await scaf.setInputFiles('[data-photo-input=struck]', 'public/icon-192.png');

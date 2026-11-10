@@ -121,6 +121,10 @@ create table if not exists scaffolds (
   emailed_to text not null default ''
 );
 
+-- Added later: the site manager who raised a snag or call-off gets copied into its emails
+alter table snags add column if not exists raised_by_email text not null default '';
+alter table scaffolds add column if not exists requested_by_email text not null default '';
+
 -- Added later: delays on each address
 create table if not exists delays (
   id uuid primary key default gen_random_uuid(),
