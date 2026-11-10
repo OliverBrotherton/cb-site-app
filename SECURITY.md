@@ -29,7 +29,7 @@ All permission checks are on the server (`lib/app.js`: `context`, `inScope`, `ow
 - CSV downloads neutralise spreadsheet formulas (cells starting `= + - @`).
 - Photos: JPEG/PNG/WebP only, max 6 MB. Asbestos survey PDFs: max 3 MB and must start with a real PDF header. random UUID file names, private bucket. They're served only to a valid PIN session or the contractor whose snag holds the photo, via 1-hour signed URLs.
 - Headers: Content-Security-Policy (scripts from self and cdnjs only, no framing), HSTS, X-Content-Type-Options, Referrer-Policy no-referrer, X-Frame-Options DENY.
-- The daily chase (`api/chase.js`) runs from Vercel Cron and only with the `CRON_SECRET` bearer token; admins can also run it from the app. It sends at most 150 emails a run and records each chase so nothing is sent twice in a day. Site managers can only be copied in on @chasberger.co.uk addresses.
+- The daily chase (`api/chase.js`) runs from Vercel Cron and only with the `CRON_SECRET` bearer token; admins can also run it from the app. It sends at most 60 emails a run (the rest go the next working day) and records each chase so nothing is sent twice in a day. Site managers can only be copied in on @chasberger.co.uk addresses.
 - Server inputs are length-limited and whitelisted (statuses, priorities, work types, emails, dates). Uploaded survey questions are checked in full on the server (`lib/questions.js`) before they're saved, and the previous set is kept for undo.
 
 ## What was tested

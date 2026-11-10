@@ -5,10 +5,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/*.js": {
-      "maxDuration": 30
-    },
-    "api/chase.js": {
-      "maxDuration": 120
+      "maxDuration": 60
     }
   },
   "crons": [
