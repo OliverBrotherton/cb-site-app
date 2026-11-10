@@ -434,6 +434,14 @@ try {
   await toastHas(admin, 'Deleted 1 address');
   ok((await api('data', {}, { authorization: 'Bearer ' + tok })).data.properties.length === 2, 'project\'s addresses deleted, others kept');
 
+  // ---------- chase emails ----------
+  ok((await fetch(BASE + '/api/chase')).status === 401 && (await fetch(BASE + '/api/chase', { headers: { authorization: 'Bearer wrong' } })).status === 401, 'chase run can\'t be triggered by outsiders');
+  ok((await api('runChaseNow', {}, { authorization: 'Bearer ' + sTok })).ok === false, 'site team cannot trigger chases');
+  await admin.click('.nav [data-tab=reports]');
+  await admin.click('[data-act=chase-now]');
+  await admin.waitForFunction(() => /Sent \d+ snag|Not a working day/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 8000 });
+  ok(true, 'admin can send today\'s chases now');
+
   // ---------- PIN brute force is blocked ----------
   let last;
   for (let i = 0; i < 9; i++) last = await api('login', { pin: String(100000 + i) });

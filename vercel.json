@@ -6,8 +6,17 @@
   "functions": {
     "api/*.js": {
       "maxDuration": 30
+    },
+    "api/chase.js": {
+      "maxDuration": 120
     }
   },
+  "crons": [
+    {
+      "path": "/api/chase",
+      "schedule": "0 7 * * 1-5"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

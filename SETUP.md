@@ -40,6 +40,9 @@ The app sends snag emails one of two ways. Pick one.
 
 Redeploy, then check `/api/health`. The email line shows which method is in use. Until email is set up, snags show "Not emailed" with a **Copy email** button for Outlook.
 
+## 3b. Chase emails
+Missed snags (fix-by date passed) and missed scaffold strikes are chased automatically at 7am every working day: the first working day after, then every 5 working days until closed out. Weekends and England & Wales bank holidays are skipped. Add `CRON_SECRET` (any random string of 16+ characters) in Vercel's Environment Variables and redeploy; `/api/health` shows "chase_emails: set up" when it's done. Bank holidays are listed in `lib/workdays.js` up to the end of 2028.
+
 ## 4. First use
 1. Open the web address on your phone. Enter your name and your **admin PIN**.
 2. **Projects > New project**: name, your email, and a 6-digit **site team PIN** (one is made for you). Add the contractors.

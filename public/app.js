@@ -241,7 +241,7 @@ function snagRow(s,showAddr=true){
   const cx=s.contractor_id&&S.contractors.get(s.contractor_id);
   const unsent=S.mode==='pm'&&s.contractor_id&&s.status==='open'&&(s.email_status==='pending'||s.email_status==='failed');
   const th=s.photos&&s.photos[0]?`<img class="snag-thumb" src="${src(s.photos[0])}" alt="" loading="lazy">`:`<span class="snag-thumb none">${I.cam}</span>`;
-  return`<button type="button" class="row" data-act="open-snag" data-id="${s.id}">${th}<div class="main"><span class="t">${esc(s.title)}</span><span class="s">${showAddr?`<span>${esc(p.address||'')}</span>`:''}${s.location?`<span>${esc(s.location)}</span>`:''}${s.trade?`<span class="tag">${esc(s.trade)}</span>`:''}</span><span class="s"><span class="mono">${snagRef(s)}</span>${S.mode==='pm'&&cx?`<span>${esc(cx.name)}</span>`:''}<span>raised ${ago(s.raised_at)}</span>${isOverdue(s)?'<span style="color:var(--bad);font-weight:700">Overdue</span>':''}${unsent?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span>${s.priority==='High'?'<span class="pill p-bad">High</span>':''}</div></button>`;
+  return`<button type="button" class="row" data-act="open-snag" data-id="${s.id}">${th}<div class="main"><span class="t">${esc(s.title)}</span><span class="s">${showAddr?`<span>${esc(p.address||'')}</span>`:''}${s.location?`<span>${esc(s.location)}</span>`:''}${s.trade?`<span class="tag">${esc(s.trade)}</span>`:''}</span><span class="s"><span class="mono">${snagRef(s)}</span>${S.mode==='pm'&&cx?`<span>${esc(cx.name)}</span>`:''}<span>raised ${ago(s.raised_at)}</span>${isOverdue(s)?'<span style="color:var(--bad);font-weight:700">Overdue</span>':''}${S.mode==='pm'&&s.chase_count&&s.status==='open'?`<span>Chased ${s.chase_count}×</span>`:''}${unsent?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span>${s.priority==='High'?'<span class="pill p-bad">High</span>':''}</div></button>`;
 }
 function snagsBody(){
   const all=[...S.snags.values()].sort((a,b)=>(b.raised_at||0)-(a.raised_at||0));
@@ -409,6 +409,7 @@ function reportsBody(){
     <div class="tbl-wrap"><table><thead><tr><th>Who's responsible</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('cause',[...DELAY_CAUSES,'Not set'])}</tbody></table></div>
     <div class="tbl-wrap"><table><thead><tr><th>Reason</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('reason',DELAY_REASONS)}</tbody></table></div>
     ${open.length?`<div class="list">${open.sort((a,b)=>String(a.started).localeCompare(String(b.started))).map(d=>delayRow(d,true)).join('')}</div>`:''}`})()}
+  ${S.role==='admin'?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Chase emails</b><div class="meta">Sent automatically at 7am every working day for missed snags and scaffold strikes.</div></div><button type="button" class="btn" data-act="chase-now">Send today's chases now</button></div>`:''}
   <div class="section-h"><h3>Download for Excel</h3></div>
   <div style="display:flex;flex-direction:column;gap:10px">
     <button type="button" class="btn block" data-act="export" data-v="snags">${I.dl} Snag register (.csv)</button>
@@ -751,7 +752,7 @@ function newSnagSheet(pid){
    <div id="sn-mail-row" hidden style="display:flex;flex-direction:column;gap:14px"><label class="check"><input type="checkbox" id="sn-mail" checked><span><b>Email it to them now</b><br><span class="meta" id="sn-mail-to"></span></span></label>
    ${copyMeField('sn-cc','Get a copy of this email, and of their close-out when it\'s done.')}</div>
    <div class="field"><span class="lab">5. How urgent?</span><div class="opts yn">${['Low','Medium','High'].map(x=>`<label class="opt"><input type="radio" name="sn-pr" value="${x}" ${x==='Medium'?'checked':''} ${x==='High'?'data-flag':''}><span>${x}</span></label>`).join('')}</div></div>
-   <div class="field"><label for="sn-d">Fix by (optional)</label><input id="sn-d" class="inp" type="date" min="${todayISO()}"></div>
+   <div class="field"><label for="sn-d">Fix by</label><p class="help">If it's missed, the contractor is chased by email automatically, then every 5 working days until it's closed out.</p><input id="sn-d" class="inp" type="date" min="${todayISO()}"></div>
    <div class="field"><label for="sn-tr">Trade (optional)</label><select id="sn-tr" class="inp"><option value="">Not sure</option>${TRADES.map(t=>`<option>${t}</option>`).join('')}</select></div>
    <div class="field"><label for="sn-n">More detail (optional)</label><textarea id="sn-n" class="inp" rows="3"></textarea></div>`,
    foot:`<button type="button" class="btn primary" data-act="sn-save">Raise snag</button>`,
@@ -808,7 +809,7 @@ function snagSheet(s){
    <h3 style="font-size:22px">${esc(s.title)}</h3>
    ${gal(s.photos)}
    ${emailHtml}
-   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'Unknown')} <span class="mono">${esc(p.postcode||'')}</span></dd>${s.location?`<dt>Where</dt><dd>${esc(s.location)}</dd>`:''}<dt>Fixing it</dt><dd>${cx?esc(cx.name):'Our own team'}</dd>${s.trade?`<dt>Trade</dt><dd>${esc(s.trade)}</dd>`:''}${s.due?`<dt>Fix by</dt><dd>${fmtDue(s.due)}</dd>`:''}<dt>Raised</dt><dd>${fmtDate(s.raised_at)}${s.raised_by?' by '+esc(s.raised_by):''}</dd>${s.fixed_at?`<dt>Fixed</dt><dd>${fmtDate(s.fixed_at)}${s.fixed_by?' by '+esc(s.fixed_by):''}</dd>`:''}${s.closed_at&&s.status==='closed'?`<dt>Signed off</dt><dd>${fmtDate(s.closed_at)}${s.closed_by?' by '+esc(s.closed_by):''}</dd>`:''}</dl>
+   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'Unknown')} <span class="mono">${esc(p.postcode||'')}</span></dd>${s.location?`<dt>Where</dt><dd>${esc(s.location)}</dd>`:''}<dt>Fixing it</dt><dd>${cx?esc(cx.name):'Our own team'}</dd>${s.trade?`<dt>Trade</dt><dd>${esc(s.trade)}</dd>`:''}${s.due?`<dt>Fix by</dt><dd>${fmtDue(s.due)}</dd>`:''}${s.chase_count?`<dt>Chased</dt><dd>${s.chase_count} time${s.chase_count>1?'s':''}, last ${fmtDue(s.last_chased)}</dd>`:''}<dt>Raised</dt><dd>${fmtDate(s.raised_at)}${s.raised_by?' by '+esc(s.raised_by):''}</dd>${s.fixed_at?`<dt>Fixed</dt><dd>${fmtDate(s.fixed_at)}${s.fixed_by?' by '+esc(s.fixed_by):''}</dd>`:''}${s.closed_at&&s.status==='closed'?`<dt>Signed off</dt><dd>${fmtDate(s.closed_at)}${s.closed_by?' by '+esc(s.closed_by):''}</dd>`:''}</dl>
    ${s.notes?`<div class="notes-box">${esc(s.notes)}</div>`:''}
    ${s.fix_photos&&s.fix_photos.length?`<div class="field"><span class="lab">After photos</span>${gal(s.fix_photos)}${s.fix_note?`<div class="notes-box">${esc(s.fix_note)}</div>`:''}</div>`:''}
    ${s.status==='open'?`<div class="field"><span class="lab">After photos</span><p class="help">${cx?`${esc(cx.name)} adds these when they close it out. You can add them yourself too.`:'Take a photo of the finished repair before marking it fixed.'}</p>${photoField('fix')}</div>`:''}
@@ -858,7 +859,7 @@ const openScaffold=pid=>[...S.scaffolds.values()].some(x=>x.property_id===pid&&(
 function scaffRow(x){
   const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=SCAFF[x.status]||SCAFF.requested;
   const when=x.status==='confirmed'&&x.confirmed_date?x.confirmed_date:x.strike_date;
-  return`<button type="button" class="row" data-act="open-scaffold" data-id="${x.id}"><div class="main"><span class="t">Strike scaffold${S.mode==='contractor'||!S.view?' · '+esc(p.address||''):''}</span><span class="s"><span class="mono">${scaffRef(x)}</span><span>${x.status==='struck'?'Struck '+fmtDate(x.struck_at):'By '+fmtDue(when)}</span>${S.mode==='pm'&&c?`<span>${esc(c.name)}</span>`:''}${S.mode==='pm'&&x.email_status==='failed'?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span></div></button>`;
+  return`<button type="button" class="row" data-act="open-scaffold" data-id="${x.id}"><div class="main"><span class="t">Strike scaffold${S.mode==='contractor'||!S.view?' · '+esc(p.address||''):''}</span><span class="s"><span class="mono">${scaffRef(x)}</span><span>${x.status==='struck'?'Struck '+fmtDate(x.struck_at):'By '+fmtDue(when)}</span>${(x.status==='requested'||x.status==='confirmed')&&when<todayISO()?'<span style="color:var(--bad);font-weight:700">Overdue</span>':''}${S.mode==='pm'&&x.chase_count?`<span>Chased ${x.chase_count}×</span>`:''}${S.mode==='pm'&&c?`<span>${esc(c.name)}</span>`:''}${S.mode==='pm'&&x.email_status==='failed'?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span></div></button>`;
 }
 function newScaffoldSheet(p){
   const cs=p.project_id?contractorsOf(p.project_id):[];
@@ -911,7 +912,7 @@ function scaffoldSheet(x){
    body:`<span class="pill ${cls}" style="align-self:flex-start">${lab}</span>
    <h3 style="font-size:22px">Strike scaffold</h3>
    ${x.email_status==='sent'?`<div class="email-line sent"><span style="flex:1;min-width:0">Emailed to <b>${esc(x.emailed_to)}</b> ${ago(x.emailed_at)}</span></div>`:x.email_status==='none'?'':`<div class="email-line unsent"><span style="flex:1;min-width:0"><b>Email not sent.</b> ${esc(x.email_error||'')}</span>${S.emailReady?`<button type="button" class="btn" data-act="sf-resend">Send again</button>`:''}</div>`}
-   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Scaffolder</dt><dd>${c?esc(c.name):'Removed'}</dd><dt>You asked for</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>They'll strike</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.struck_at?`<dt>Struck</dt><dd>${fmtDate(x.struck_at)}${x.struck_by?' by '+esc(x.struck_by):''}</dd>`:''}<dt>Called off</dt><dd>${fmtDate(x.requested_at)}${x.requested_by?' by '+esc(x.requested_by):''}</dd></dl>
+   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Scaffolder</dt><dd>${c?esc(c.name):'Removed'}</dd><dt>You asked for</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>They'll strike</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.struck_at?`<dt>Struck</dt><dd>${fmtDate(x.struck_at)}${x.struck_by?' by '+esc(x.struck_by):''}</dd>`:''}<dt>Called off</dt><dd>${fmtDate(x.requested_at)}${x.requested_by?' by '+esc(x.requested_by):''}</dd>${x.chase_count?`<dt>Chased</dt><dd>${x.chase_count} time${x.chase_count>1?'s':''}, last ${fmtDue(x.last_chased)}</dd>`:''}</dl>
    ${(x.checks||[]).length?`<div class="field"><span class="lab">Checked before call-off</span><div class="notes-box">${x.checks.map(esc).join('<br>')}</div></div>`:''}
    ${x.notes?`<div class="notes-box">${esc(x.notes)}</div>`:''}
    ${x.scaff_note?`<div class="field"><span class="lab">Scaffolder's note</span><div class="notes-box">${esc(x.scaff_note)}</div></div>`:''}
@@ -946,6 +947,7 @@ function contractorSnagSheet(s){
    body:`<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill ${cls}">${lab}</span>${s.priority==='High'?'<span class="pill p-bad">High priority</span>':''}${isOverdue(s)?'<span class="pill p-bad">Overdue</span>':''}</div>
    ${asbBanner(p)}
    ${s.reopen_reason&&s.status==='open'?`<div class="banner"><b>Sent back:</b> ${esc(s.reopen_reason)}</div>`:''}
+   ${s.status==='open'&&isOverdue(s)?`<div class="banner" style="background:var(--bad-soft);color:var(--bad)"><b>Overdue.</b> This was due by ${fmtDue(s.due)}. Please close it out as soon as you can.</div>`:''}
    <h3 style="font-size:22px">${esc(s.title)}</h3>
    ${gal(s.photos)}
    <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd>${s.location?`<dt>Where</dt><dd>${esc(s.location)}</dd>`:''}${s.due?`<dt>Fix by</dt><dd>${fmtDue(s.due)}</dd>`:''}<dt>Raised</dt><dd>${fmtDate(s.raised_at)}</dd></dl>
@@ -1016,6 +1018,7 @@ document.addEventListener('click',e=>{
     case'new-pm':pmSheet(null);break;
     case'asb-f':S.asb=t.dataset.v;renderBody();break;
     case'q-template':{const ids=[...S.projects.keys()];downloadQuestionsTemplate(t,ids.length===1?ids[0]:null);break}
+    case'chase-now':t.disabled=true;api('runChaseNow',{}).then(async r=>{await load();toast(r.skipped?r.skipped:`Sent ${r.snags} snag and ${r.scaffolds} scaffold chase${r.snags+r.scaffolds===1?'':'s'}${r.failed?`, ${r.failed} failed`:''}`)}).catch(e=>{t.disabled=false;toast(e.message)});break;
     case'q-scope':questionsSheet(t.dataset.id||null);break;
     case'delay-f':S.delayF=!S.delayF;renderBody();break;
     case'new-delay':delaySheet(S.props.get(S.view.id));break;

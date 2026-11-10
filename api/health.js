@@ -21,6 +21,7 @@ export default async function handler(req, res) {
     SUPABASE_URL: env.SUPABASE_URL ? (/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(cleanSupabaseUrl(env.SUPABASE_URL)) ? 'set' : 'WRONG: should look like https://abcdefgh.supabase.co (Supabase > Project Settings > Data API > Project URL)') : 'missing',
     SUPABASE_SERVICE_KEY: keyType((env.SUPABASE_SERVICE_KEY || '').trim()),
     database: 'not checked', photo_storage: 'not checked',
+    chase_emails: env.CRON_SECRET && env.CRON_SECRET.length >= 16 ? 'set up (weekdays 7am)' : 'not set up yet: add CRON_SECRET in Vercel',
     email: emailMethod(env) ? `set up (${emailMethod(env)})` : 'not set up yet (snags show "Not emailed" until it is)',
   };
   // Which Microsoft 365 email settings this deployment can see (yes/no only)
@@ -46,8 +47,8 @@ export default async function handler(req, res) {
         projects: ['id', 'name', 'pm_email', 'pin', 'pm_id'],
         contractors: ['id', 'project_id', 'name', 'email', 'trade', 'token'],
         properties: ['id', 'project_id', 'ref', 'address', 'postcode', 'works', 'status', 'notes', 'asb_status', 'asb_type', 'asb_ref', 'asb_date', 'asb_notes', 'asb_impact', 'asb_docs', 'asb_checked_by', 'asb_checked_at'],
-        snags: ['id', 'ref_no', 'property_id', 'contractor_id', 'title', 'photos', 'fix_photos', 'status', 'email_status', 'emailed_to', 'raised_by_email'],
-        scaffolds: ['id', 'ref_no', 'property_id', 'contractor_id', 'strike_date', 'notes', 'checks', 'photos', 'status', 'confirmed_date', 'confirmed_at', 'scaff_note', 'struck_at', 'struck_by', 'struck_photos', 'requested_by', 'requested_at', 'email_status', 'email_error', 'emailed_at', 'emailed_to', 'requested_by_email'],
+        snags: ['id', 'ref_no', 'property_id', 'contractor_id', 'title', 'photos', 'fix_photos', 'status', 'email_status', 'emailed_to', 'raised_by_email', 'chase_count', 'last_chased'],
+        scaffolds: ['id', 'ref_no', 'property_id', 'contractor_id', 'strike_date', 'notes', 'checks', 'photos', 'status', 'confirmed_date', 'confirmed_at', 'scaff_note', 'struck_at', 'struck_by', 'struck_photos', 'requested_by', 'requested_at', 'email_status', 'email_error', 'emailed_at', 'emailed_to', 'requested_by_email', 'chase_count', 'last_chased'],
         surveys: ['id', 'property_id', 'type', 'answers', 'photos', 'status'],
         settings: ['id', 'key', 'value', 'updated_at', 'updated_by'],
         delays: ['id', 'property_id', 'reason', 'cause', 'started', 'ended', 'notes', 'photos', 'status', 'logged_by', 'logged_at', 'resolved_by', 'resolved_at'],

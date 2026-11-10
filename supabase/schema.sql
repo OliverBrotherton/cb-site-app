@@ -125,6 +125,12 @@ create table if not exists scaffolds (
 alter table snags add column if not exists raised_by_email text not null default '';
 alter table scaffolds add column if not exists requested_by_email text not null default '';
 
+-- Added later: automatic chase emails for missed snags and scaffold strikes
+alter table snags add column if not exists chase_count integer not null default 0;
+alter table snags add column if not exists last_chased text not null default '';
+alter table scaffolds add column if not exists chase_count integer not null default 0;
+alter table scaffolds add column if not exists last_chased text not null default '';
+
 -- Added later: delays on each address
 create table if not exists delays (
   id uuid primary key default gen_random_uuid(),
