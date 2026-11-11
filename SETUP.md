@@ -69,6 +69,14 @@ Projects tab > **Add a project manager**: name, work email and a PIN (one is mad
 ## Updating the database after an app update
 If `/api/health` says the database needs updating, open `supabase/schema.sql` on GitHub, copy it, paste it into the Supabase SQL Editor and click **Run**. It's safe to run again and never deletes data.
 
+## Works tracker (per project)
+PMs can give a project its own tracker, in the CB Works Tracker format:
+1. **Projects > the project > Works tracker > Blank template** (also on the Progress tab under Templates).
+2. Fill in the headings from column E, the answer type above each one, and the Lists tab (statuses with what they count as, sites, and a list for each pick-from-list column).
+3. **Upload tracker**, check the preview, **Apply**.
+
+Every address on the project then has an **Overview** and a **Tracker** tab, the project's statuses replace the standard ones, the Progress tab shows the tracker dashboard, and **Download tracker** gives the spreadsheet in the same format, filled in, with its dashboard. Paste the SharePoint folder link on the project now; the spreadsheet will appear there once SharePoint access is set up.
+
 ## Changing survey questions
 In the app: **Projects tab > Survey questions**. PMs can change the questions on projects they run; the admin can also change the **company questions**, which every project uses unless it has its own.
 1. **Download template.** It's built from the questions in use right now.

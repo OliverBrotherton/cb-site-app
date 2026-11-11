@@ -131,6 +131,11 @@ alter table snags add column if not exists last_chased text not null default '';
 alter table scaffolds add column if not exists chase_count integer not null default 0;
 alter table scaffolds add column if not exists last_chased text not null default '';
 
+-- Added later: each project's own works tracker answers on every address
+alter table properties add column if not exists tracker jsonb not null default '{}';
+alter table properties add column if not exists tracker_updated_at bigint;
+alter table properties add column if not exists tracker_updated_by text not null default '';
+
 -- Added later: delays on each address
 create table if not exists delays (
   id uuid primary key default gen_random_uuid(),

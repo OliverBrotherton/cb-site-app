@@ -46,7 +46,7 @@ export default async function handler(req, res) {
         pms: ['id', 'name', 'email', 'pin'],
         projects: ['id', 'name', 'pm_email', 'pin', 'pm_id'],
         contractors: ['id', 'project_id', 'name', 'email', 'trade', 'token'],
-        properties: ['id', 'project_id', 'ref', 'address', 'postcode', 'works', 'status', 'notes', 'asb_status', 'asb_type', 'asb_ref', 'asb_date', 'asb_notes', 'asb_impact', 'asb_docs', 'asb_checked_by', 'asb_checked_at'],
+        properties: ['id', 'project_id', 'ref', 'address', 'postcode', 'works', 'status', 'notes', 'asb_status', 'asb_type', 'asb_ref', 'asb_date', 'asb_notes', 'asb_impact', 'asb_docs', 'asb_checked_by', 'asb_checked_at', 'tracker', 'tracker_updated_at', 'tracker_updated_by'],
         snags: ['id', 'ref_no', 'property_id', 'contractor_id', 'title', 'photos', 'fix_photos', 'status', 'email_status', 'emailed_to', 'raised_by_email', 'chase_count', 'last_chased'],
         scaffolds: ['id', 'ref_no', 'property_id', 'contractor_id', 'strike_date', 'notes', 'checks', 'photos', 'status', 'confirmed_date', 'confirmed_at', 'scaff_note', 'struck_at', 'struck_by', 'struck_photos', 'requested_by', 'requested_at', 'email_status', 'email_error', 'emailed_at', 'emailed_to', 'requested_by_email', 'chase_count', 'last_chased'],
         surveys: ['id', 'property_id', 'type', 'answers', 'photos', 'status'],

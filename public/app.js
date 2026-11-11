@@ -31,7 +31,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- state ---------- */
 const S={token:'',ctoken:'',name:'',email:'',role:'',mode:'pm',ready:false,emailReady:false,
- pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),asb:'all',delayF:false,
+ pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),trackers:{},ptab:'overview',tOpen:new Set(),trkProj:'',asb:'all',delayF:false,
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
@@ -58,7 +58,7 @@ async function load(){
   loading=(async()=>{
     try{
       const d=await api('data');
-      S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions);
+      S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions);S.trackers=d.trackers||{};
       for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]],['delays',d.delays||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
       S.ready=true;S.loadError='';render();
@@ -226,8 +226,8 @@ function addressesBody(){
   let rows='',last=null;const groups=S.scheme==='all'&&projs.length>1;
   for(const p of list){
     if(groups&&p.project_id!==last){last=p.project_id;rows+=`<div class="group-h">${esc(projectName(p)||'No project')}</div>`}
-    const n=openSnagCount(p.id);const st=p.status||'To survey';
-    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end"><span class="pill ${PSTATUS_CLS[st]}">${st}</span>${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${openDelay(p.id)?'<span class="pill p-warn">Delayed</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
+    const n=openSnagCount(p.id);const si=statusInfo(p);const site=trackerOf(p)&&(p.tracker||{})._site;
+    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${site?`<span class="tag">${esc(site)}</span>`:''}${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end">${si.label?`<span class="pill ${si.cls}">${esc(si.label)}</span>`:''}${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${openDelay(p.id)?'<span class="pill p-warn">Delayed</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
     rows+=S.selecting?`<label class="row"><input type="checkbox" data-sel="${p.id}" ${S.sel.has(p.id)?'checked':''} style="width:24px;height:24px;accent-color:var(--red);flex:none">${main}</label>`
       :`<button type="button" class="row" data-act="open-prop" data-id="${p.id}">${main}<span class="chev">${I.chev}</span></button>`;
   }
@@ -266,8 +266,8 @@ function propertyBody(){
   const dls=delaysOf(p.id);
   const sc=[...S.scaffolds.values()].filter(x=>x.property_id===p.id).sort((a,b)=>(b.requested_at||0)-(a.requested_at||0));
   const sns=[...S.snags.values()].filter(s=>s.property_id===p.id).sort((a,b)=>((a.status==='closed')-(b.status==='closed'))||(b.raised_at||0)-(a.raised_at||0));
-  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}${openDelay(p.id)?`<span class="pill p-warn">Delayed ${delaysOf(p.id).filter(d=>d.status!=='resolved').reduce((n,d)=>n+delayDays(d),0)} days</span>`:''}</div></div>
-  <div class="field"><span class="lab">Job status</span><div class="seg">${PSTATUS.map(s=>`<button type="button" data-act="set-status" data-v="${s}" aria-pressed="${st===s}">${s}</button>`).join('')}</div></div>
+  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}${openDelay(p.id)?`<span class="pill p-warn">Delayed ${delaysOf(p.id).filter(d=>d.status!=='resolved').reduce((n,d)=>n+delayDays(d),0)} days</span>`:''}</div></div>`+tabsFor(p)+(trackerOf(p)&&S.ptab==='tracker'?trackerTab(p):`
+  ${statusBlock(p)}
   ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
   <div class="panel" style="display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:17px">Asbestos</b>${asbPill(p)}</div>
@@ -285,7 +285,150 @@ function propertyBody(){
   <div class="section-h"><h3>Delays</h3>${dls.length?`<span class="meta">${dls.reduce((n,d)=>n+delayDays(d),0)} days lost</span>`:''}</div>
   ${dls.length?`<div class="list">${dls.map(d=>delayRow(d,false)).join('')}</div>`:''}
   <button type="button" class="btn" data-act="new-delay" style="align-self:flex-start">Log a delay</button>
-  <button type="button" class="btn" data-act="edit-prop" style="align-self:flex-start">Edit address details</button>`;
+  <button type="button" class="btn" data-act="edit-prop" style="align-self:flex-start">Edit address details</button>`);
+}
+
+/* ---------- works tracker ---------- */
+const T_GROUP_CLS={'Not started':'p-info','In progress':'p-warn','Complete':'p-ok','Left out of totals':'p-grey'};
+const trackerOf=p=>p&&p.project_id&&S.trackers[p.project_id]?S.trackers[p.project_id].config:null;
+// Status label, colour and group, from the project's tracker if it has one
+function statusInfo(p){
+  const tr=trackerOf(p);
+  if(tr){const x=tr.statuses.find(y=>y.name===p.status);return x?{label:x.name,cls:T_GROUP_CLS[x.group],group:x.group}:{label:'',cls:'',group:''}}
+  const st=p.status||'To survey';return{label:st,cls:PSTATUS_CLS[st],group:st==='Complete'?'Complete':st==='In progress'?'In progress':'Not started'};
+}
+function statusBlock(p){
+  const tr=trackerOf(p);
+  if(!tr){const st=p.status||'To survey';return`<div class="field"><span class="lab">Job status</span><div class="seg">${PSTATUS.map(s=>`<button type="button" data-act="set-status" data-v="${s}" aria-pressed="${st===s}">${s}</button>`).join('')}</div></div>`}
+  return`<div class="field"><label for="p-status">Status</label><select id="p-status" class="inp" data-status-for="${p.id}"><option value="">No status yet</option>${tr.statuses.map(x=>`<option ${p.status===x.name?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>`;
+}
+function tabsFor(p){
+  if(!trackerOf(p))return'';
+  return`<div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" data-act="ptab" data-v="overview" aria-pressed="${S.ptab!=='tracker'}">Overview</button><button type="button" data-act="ptab" data-v="tracker" aria-pressed="${S.ptab==='tracker'}">Tracker</button></div>`;
+}
+const tFmt=(f,v)=>!v?'':(f.type==='date'||f.type==='date_na')&&/^\d{4}-/.test(v)?fmtDue(v):v;
+function trackerGroups(tr){const g=[];tr.fields.forEach(f=>{let x=g.find(y=>y.name===f.group);if(!x)g.push(x={name:f.group,fields:[]});x.fields.push(f)});return g}
+function trackerTab(p){
+  const tr=trackerOf(p);const v=p.tracker||{};
+  return`<p class="meta" style="margin:0">${p.tracker_updated_at?`Updated ${ago(p.tracker_updated_at)}${p.tracker_updated_by?' by '+esc(p.tracker_updated_by):''}.`:'Nothing filled in yet.'} Tap a group to see it.</p>
+  <div class="panel" style="display:flex;flex-direction:column;gap:6px"><dl class="kv"><dt>Status</dt><dd>${statusInfo(p).label?`<span class="pill ${statusInfo(p).cls}">${esc(statusInfo(p).label)}</span>`:'<span class="meta">No status yet</span>'}</dd>${tr.sites.length||v._site?`<dt>Site</dt><dd>${esc(v._site||'')||'<span class="meta">Not set</span>'}</dd>`:''}<dt>UPRN</dt><dd class="mono">${esc(p.ref||'')||'<span class="meta">Not set</span>'}</dd></dl></div>
+  ${trackerGroups(tr).map(g=>{const open=S.tOpen.has(g.name);const filled=g.fields.filter(f=>v[f.key]).length;
+    return`<div class="panel" style="padding:0;overflow:hidden"><button type="button" data-act="tgroup" data-v="${esc(g.name)}" aria-expanded="${open}" style="all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:10px;padding:16px 18px;cursor:pointer;min-height:56px"><b style="font-size:16px;flex:1">${esc(g.name)}</b><span class="meta">${filled}/${g.fields.length}</span><span style="display:inline-block;transform:rotate(${open?90:0}deg)">${I.chev}</span></button>
+    ${open?`<div style="padding:0 18px 16px"><dl class="kv">${g.fields.map(f=>`<dt>${esc(f.name)}</dt><dd>${v[f.key]?esc(tFmt(f,v[f.key])):'<span class="meta">Not filled in</span>'}</dd>`).join('')}</dl></div>`:''}</div>`}).join('')}
+  <button type="button" class="btn primary block" data-act="tracker-edit" style="min-height:56px">Update tracker</button>`;
+}
+function tControl(f,v,i){
+  const id='tf'+i;const opts=f.options||[];
+  if(f.type==='yn')return`<div class="opts yn">${['Yes','No'].map(x=>`<label class="opt"><input type="radio" name="${id}" value="${x}" ${v===x?'checked':''}><span>${x}</span></label>`).join('')}<label class="opt"><input type="radio" name="${id}" value="" ${!v?'checked':''}><span>Not set</span></label></div>`;
+  if(f.type==='date')return`<input class="inp" type="date" name="${id}" value="${esc(/^\d/.test(v||'')?v:'')}">`;
+  if(f.type==='date_na')return`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><input class="inp" type="date" name="${id}" value="${esc(/^\d/.test(v||'')?v:'')}" style="max-width:220px" ${v==='N/A'?'disabled':''}><label class="check" style="align-items:center"><input type="checkbox" data-na="${id}" ${v==='N/A'?'checked':''}><span>N/A</span></label></div>`;
+  if(f.type==='notes')return`<textarea class="inp" rows="3" name="${id}">${esc(v)}</textarea>`;
+  if(f.type==='number')return`<input class="inp" type="number" inputmode="decimal" name="${id}" value="${esc(v)}">`;
+  if(f.type==='pick'||f.type==='pick_add'){
+    const other=f.type==='pick_add'&&v&&!opts.includes(v);
+    return`<select class="inp" name="${id}" ${f.type==='pick_add'?`data-other="${id}"`:''}><option value="">Not set</option>${opts.map(x=>`<option ${v===x?'selected':''}>${esc(x)}</option>`).join('')}${f.type==='pick_add'?`<option value="__other" ${other?'selected':''}>Something else…</option>`:''}</select>${f.type==='pick_add'?`<input class="inp" name="${id}-other" placeholder="Type it here" value="${esc(other?v:'')}" ${other?'':'hidden'} style="margin-top:8px">`:''}`;
+  }
+  return`<input class="inp" name="${id}" value="${esc(v)}">`;
+}
+function trackerSheet(p){
+  const tr=trackerOf(p);const v=p.tracker||{};
+  openSheet({title:'Update tracker',
+   body:`<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(p.address)}</b> · <span class="mono">${esc(p.postcode||'')}</span></p>
+   <form id="tr-form" style="display:flex;flex-direction:column;gap:14px">
+   <section class="sec"><div class="sec-h"><h3>Status</h3></div>
+     <div class="field"><label for="tr-status">Status</label><select id="tr-status" class="inp"><option value="">No status yet</option>${tr.statuses.map(x=>`<option ${p.status===x.name?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+     ${tr.sites.length?`<div class="field"><label for="tr-site">Site</label><select id="tr-site" class="inp"><option value="">Not set</option>${tr.sites.map(x=>`<option ${v._site===x?'selected':''}>${esc(x)}</option>`).join('')}${v._site&&!tr.sites.includes(v._site)?`<option selected>${esc(v._site)}</option>`:''}</select></div>`:''}
+   </section>
+   ${trackerGroups(tr).map(g=>`<section class="sec"><div class="sec-h"><h3>${esc(g.name)}</h3></div>${g.fields.map(f=>{const i=tr.fields.indexOf(f);return`<div class="field"><span class="lab">${esc(f.name)}</span>${tControl(f,v[f.key]||'',i)}</div>`}).join('')}</section>`).join('')}
+   </form>`,
+   foot:`<button type="button" class="btn primary" data-act="tr-save">Save</button>`,
+   mount(sh){
+     sh.querySelectorAll('[data-na]').forEach(cb=>cb.addEventListener('change',()=>{const d=sh.querySelector(`input[type=date][name="${cb.dataset.na}"]`);d.disabled=cb.checked;if(cb.checked)d.value=''}));
+     sh.querySelectorAll('[data-other]').forEach(sel=>sel.addEventListener('change',()=>{const o=sh.querySelector(`[name="${sel.dataset.other}-other"]`);o.hidden=sel.value!=='__other';if(!o.hidden)o.focus()}));
+   },
+   acts:{'tr-save':async b=>{
+     const fd=new FormData($('#tr-form'));const values={};
+     tr.fields.forEach((f,i)=>{const id='tf'+i;let x;
+       if(f.type==='date_na'&&$(`[data-na="${id}"]`).checked)x='N/A';
+       else if(f.type==='pick_add'&&fd.get(id)==='__other')x=String(fd.get(id+'-other')||'').trim();
+       else x=String(fd.get(id)??'').trim();
+       values[f.key]=x});
+     b.disabled=true;
+     try{await api('updateTracker',{property_id:p.id,values,status:$('#tr-status').value,...($('#tr-site')?{site:$('#tr-site').value}:{})});await load();closeSheet();toast('Tracker saved')}
+     catch(e){b.disabled=false;toast(e.message)}
+   }}});
+}
+// The project's dashboard, worked out the same way as the spreadsheet's
+function trackerDashboard(pid){
+  const tr=(S.trackers[pid]||{}).config;if(!tr)return'';
+  const props=[...S.props.values()].filter(p=>p.project_id===pid);
+  const grp=p=>statusInfo(p).group;
+  const fk=name=>{const f=tr.fields.find(x=>x.name.toLowerCase()===name.toLowerCase());return f&&f.key};
+  const val=(p,name)=>{const k=fk(name);return k?((p.tracker||{})[k]||''):''};
+  const isDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v);const today=todayISO();const in7=new Date(Date.now()+7*day).toISOString().slice(0,10);
+  const live=props.filter(p=>grp(p)!=='Left out of totals');const done=live.filter(p=>grp(p)==='Complete').length;
+  const active=p=>grp(p)==='Not started'||grp(p)==='In progress';
+  const strikes=['Scaffold Elevation Strike','Scaffold Handrail Strike'];
+  const hasScaff=!!fk('Scaffold Elevation Strike');
+  const up=hasScaff&&fk('Scaffold Elevation Erection')?props.filter(p=>{const e=val(p,'Scaffold Elevation Erection'),x=val(p,'Scaffold Elevation Strike');return isDate(e)&&e<=today&&!(isDate(x)&&x<=today)}).length:'–';
+  const overdue=hasScaff?props.filter(p=>active(p)&&strikes.some(n=>isDate(val(p,n))&&val(p,n)<today)).length:'–';
+  const next7=hasScaff?props.filter(p=>grp(p)!=='Complete'&&grp(p)!=='Left out of totals'&&strikes.some(n=>isDate(val(p,n))&&val(p,n)>=today&&val(p,n)<=in7)).length:'–';
+  const asbNo=fk('Visual Asbestos Check Against Scope')?props.filter(p=>val(p,'Visual Asbestos Check Against Scope')==='No').length:'–';
+  const pct=live.length?Math.round(done/live.length*100):0;
+  const table=(label,items,get)=>{const rows=items.map(it=>{const ps=live.filter(p=>get(p)===it);if(!ps.length)return'';const c=ps.filter(p=>grp(p)==='Complete').length;const od=hasScaff?ps.filter(p=>active(p)&&strikes.some(n=>isDate(val(p,n))&&val(p,n)<today)).length:'–';
+    return`<tr><td>${esc(it)}</td><td class="n">${ps.length}</td><td class="n">${ps.filter(p=>grp(p)==='Not started').length}</td><td class="n">${ps.filter(p=>grp(p)==='In progress').length}</td><td class="n">${c}</td><td class="n">${Math.round(c/ps.length*100)}%</td><td class="n">${od}</td></tr>`}).join('');
+    return rows?`<div class="tbl-wrap"><table><thead><tr><th>${label}</th><th class="n">Props</th><th class="n">Not started</th><th class="n">In progress</th><th class="n">Complete</th><th class="n">%</th><th class="n">Overdue strikes</th></tr></thead><tbody>${rows}</tbody></table></div>`:''};
+  const contractorField=tr.fields.find(f=>f.name.toLowerCase()==='contractors');
+  return`<div class="tiles"><div class="tile"><div class="v">${live.length}</div><div class="l">Total properties</div></div><div class="tile"><div class="v">${pct}%</div><div class="l">Works complete (${done})</div><div class="bar"><i style="width:${pct}%"></i></div></div><div class="tile"><div class="v">${up}</div><div class="l">Scaffolds up now</div></div><div class="tile ${overdue>0?'alert':''}"><div class="v">${overdue}</div><div class="l">Overdue strikes</div></div><div class="tile"><div class="v">${next7}</div><div class="l">Strikes due next 7 days</div></div><div class="tile ${asbNo>0?'alert':''}"><div class="v">${asbNo}</div><div class="l">Asbestos check = No</div></div></div>
+  <div class="tbl-wrap"><table><thead><tr><th>Status</th><th class="n">Properties</th><th class="n">%</th></tr></thead><tbody>${tr.statuses.map(x=>{const n=props.filter(p=>p.status===x.name).length;return`<tr><td>${esc(x.name)}</td><td class="n">${n}</td><td class="n">${x.group==='Left out of totals'?'excl.':live.length?Math.round(n/live.length*100)+'%':'0%'}</td></tr>`}).join('')}<tr><td>No status set</td><td class="n">${props.filter(p=>!statusInfo(p).label).length}</td><td class="n"></td></tr></tbody></table></div>
+  ${tr.sites.length?table('Site',tr.sites,p=>(p.tracker||{})._site||''):''}
+  ${contractorField?table('Contractor',contractorField.options||[],p=>(p.tracker||{})[contractorField.key]||''):''}
+  <button type="button" class="btn block" data-act="trk-download" data-id="${pid}">${I.dl} Download tracker (.xlsx)</button>`;
+}
+async function downloadTracker(pid,btn){
+  const h={'content-type':'application/json'};if(S.token)h.authorization='Bearer '+S.token;
+  if(btn)btn.disabled=true;
+  try{
+    const r=await fetch('/api/tracker-download',{method:'POST',headers:h,body:JSON.stringify({project_id:pid})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw{message:j.error||'The tracker couldn\'t be made. Try again.'}}
+    const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=`${((S.projects.get(pid)||{}).name||'Project').replace(/[\\/:*?"<>|]+/g,'')} - Works Tracker.xlsx`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){toast(e.message||'Download didn\'t work')}finally{if(btn)btn.disabled=false}
+}
+// PM set-up: upload the tracker template, check what was read, apply
+function trackerSetupPanel(pr){
+  const t=S.trackers[pr.id];
+  return`<div class="section-h"><h3>Works tracker</h3></div>
+  <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <div class="meta">${t?`Set up ${fmtDate(t.updated_at)}${t.updated_by?' by '+esc(t.updated_by):''}: ${t.config.fields.length} columns, ${t.config.statuses.length} statuses.`:'Not set up. The project uses the standard job statuses.'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn" href="${templateUrl('CB Works Tracker - Blank Template.xlsx')}" download>${I.dl} Blank template</a>
+      <label class="btn primary" style="cursor:pointer">${I.up} ${t?'Upload new set-up':'Upload tracker'}<input type="file" accept=".xlsx" id="trk-upload" data-pid="${pr.id}" hidden></label>
+      ${t?`<button type="button" class="btn" data-act="trk-download" data-id="${pr.id}">${I.dl} Download tracker</button>`:''}
+    </div>
+    ${t?`<div class="field"><label for="trk-folder">SharePoint folder for the spreadsheet</label><p class="help">In SharePoint, open the project folder, then ⋯ > Copy link and paste it here. The spreadsheet will appear there once IT has finished connecting SharePoint.</p><div class="copy-row"><input id="trk-folder" class="inp" value="${esc(t.folder||'')}" placeholder="https://chasberger.sharepoint.com/..."><button type="button" class="btn" data-act="trk-folder" data-id="${pr.id}">Save</button></div></div>
+    <button type="button" class="btn danger" data-act="trk-remove" data-id="${pr.id}" style="align-self:flex-start">Stop using the tracker</button>`:''}
+  </div>`;
+}
+async function uploadTrackerFile(file,pid){
+  try{
+    toast('Reading '+file.name+'…');
+    const data=await toB64(file);
+    const r=await api('trackerPreview',{project_id:pid,data});
+    const pr=S.projects.get(pid)||{};
+    if(r.problems.length){openSheet({title:'Check the tracker',body:`<div class="banner" style="background:var(--bad-soft);color:var(--bad)"><b>${r.problems.length} thing${r.problems.length>1?'s':''} to fix in the spreadsheet first</b><ul style="margin:8px 0 0;padding-left:18px">${r.problems.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`,foot:`<button type="button" class="btn" data-act="close-sheet">OK</button>`});return}
+    const m=r.summary;
+    const groups=m.groups.map(g=>`<div class="field"><span class="lab">${esc(g)} (${m.fields.filter(f=>f.group===g).length})</span><div class="notes-box" style="white-space:normal">${m.fields.filter(f=>f.group===g).map(f=>`${esc(f.name)} <span class="meta">· ${esc(f.type)}${f.options!=null?` (${f.options} options)`:''}</span>`).join('<br>')}</div></div>`).join('');
+    openSheet({title:'Check the tracker',
+     body:`<div><h3 style="font-size:20px">${esc(pr.name||'')}</h3><p class="meta" style="margin:4px 0 0">From "${esc(file.name)}"</p></div>
+     <p style="margin:0"><b>${m.columns} columns</b> in <b>${m.groups.length} groups</b> will show on the Tracker tab of every address on this project, with <b>${m.lists} drop-down lists</b>.</p>
+     ${r.changes?`<div class="field"><span class="lab">What changes</span><div class="notes-box" style="white-space:normal">${r.changes.length?r.changes.map(([k,v])=>`<b>${esc(k)}:</b> ${esc(v)}`).join('<br>'):'Nothing has changed.'}</div></div>`:''}
+     <div class="field"><span class="lab">Statuses (${m.statuses.length})</span><div class="notes-box" style="white-space:normal">${m.statuses.map(x=>`${esc(x.name)} <span class="meta">· counts as ${esc(x.group)}</span>`).join('<br>')}</div></div>
+     ${m.sites.length?`<div class="field"><span class="lab">Sites</span><div class="notes-box" style="white-space:normal">${m.sites.map(esc).join(', ')}</div></div>`:''}
+     ${groups}
+     <div class="banner">These statuses replace the standard job statuses on this project. Answers already filled in are kept.</div>`,
+     foot:`<button type="button" class="btn" data-act="close-sheet">Cancel</button><button type="button" class="btn primary" data-act="trk-apply">Apply to ${esc(pr.name||'project')}</button>`,
+     acts:{'trk-apply':async b=>{b.disabled=true;try{await api('trackerApply',{project_id:pid,data});await load();closeSheet();toast('Tracker set up')}catch(e){b.disabled=false;toast(e.message)}}}});
+  }catch(e){toast(e.message||'Couldn\'t read that file')}
 }
 
 /* ---------- projects tab ---------- */
@@ -336,6 +479,7 @@ function projectSheet(pr){
    <p class="meta" style="margin:-8px 0 0">Snags you assign to them get emailed with photos and a link. The link shows only their snags, with no login.</p>
    <div id="c-rows" style="display:flex;flex-direction:column;gap:10px"></div>
    <button type="button" class="btn" data-act="c-add" style="align-self:flex-start">${I.plus} Add contractor</button>
+   ${pr.id?trackerSetupPanel(pr):''}
    ${pr.id?`<button type="button" class="btn danger" data-act="pj-del" style="align-self:flex-start">Delete project</button>`:''}`,
    foot:`<button type="button" class="btn primary" data-act="pj-save">Save project</button>`,
    mount(){drawRows()},
@@ -372,7 +516,7 @@ function pmSheet(m){
 }
 function projectInfoSheet(pr){
   const cs=contractorsOf(pr.id);
-  openSheet({title:pr.name,body:`<dl class="kv"><dt>Project manager</dt><dd>${esc(pr.pm_email||'Not set')}</dd></dl><div class="section-h"><h3>Contractors</h3></div>${cs.length?`<div class="list">${cs.map(c=>`<div class="row" style="cursor:default"><div class="main"><span class="t">${esc(c.name)}</span><span class="s"><span>${esc(c.email)}</span>${c.trade?`<span class="tag">${esc(c.trade)}</span>`:''}</span></div></div>`).join('')}</div>`:'<p class="meta">No contractors set up yet.</p>'}`});
+  openSheet({title:pr.name,body:`${S.trackers[pr.id]?`<button type="button" class="btn" data-act="trk-download" data-id="${pr.id}" style="align-self:flex-start">${I.dl} Download works tracker</button>`:''}<dl class="kv"><dt>Project manager</dt><dd>${esc(pr.pm_email||'Not set')}</dd></dl><div class="section-h"><h3>Contractors</h3></div>${cs.length?`<div class="list">${cs.map(c=>`<div class="row" style="cursor:default"><div class="main"><span class="t">${esc(c.name)}</span><span class="s"><span>${esc(c.email)}</span>${c.trade?`<span class="tag">${esc(c.trade)}</span>`:''}</span></div></div>`).join('')}</div>`:'<p class="meta">No contractors set up yet.</p>'}`});
 }
 function addPinSheet(){
   openSheet({title:'Add a project',body:`<p class="meta" style="margin:0">Enter the PIN for another project. You'll then see both on this phone.</p><div class="field"><label for="ap-pin">Project PIN</label><input id="ap-pin" class="inp pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="one-time-code"></div>`,
@@ -388,10 +532,10 @@ function nameSheet(){
 function reportsBody(){
   const props=[...S.props.values()],snags=[...S.snags.values()],svs=[...S.surveys.values()];
   const surveyed=props.filter(p=>p.status&&p.status!=='To survey').length;
-  const complete=props.filter(p=>p.status==='Complete').length;
+  const complete=props.filter(p=>statusInfo(p).group==='Complete').length;
   const open=snags.filter(s=>s.status==='open').length,ready=snags.filter(s=>s.status==='fixed').length,overdue=snags.filter(isOverdue).length;
   const pct=(a,b)=>b?Math.round(a/b*100):0;
-  const rows=Object.keys(WORKS).map(w=>{const ps=props.filter(p=>(p.works||[]).includes(w));if(!ps.length)return'';const ids=new Set(ps.map(p=>p.id));const sv=ps.filter(p=>p.status&&p.status!=='To survey').length;const cm=ps.filter(p=>p.status==='Complete').length;const os=snags.filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;return`<tr><td>${WORKS[w]}</td><td class="n">${ps.length}</td><td class="n">${sv}</td><td class="n">${cm}</td><td class="n">${os}</td></tr>`}).join('');
+  const rows=Object.keys(WORKS).map(w=>{const ps=props.filter(p=>(p.works||[]).includes(w));if(!ps.length)return'';const ids=new Set(ps.map(p=>p.id));const sv=ps.filter(p=>p.status&&p.status!=='To survey').length;const cm=ps.filter(p=>statusInfo(p).group==='Complete').length;const os=snags.filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;return`<tr><td>${WORKS[w]}</td><td class="n">${ps.length}</td><td class="n">${sv}</td><td class="n">${cm}</td><td class="n">${os}</td></tr>`}).join('');
   const flagged=svs.filter(s=>s.status==='submitted'&&flagsOf(s)>0);
   return`<div class="tiles">
    <div class="tile"><div class="v">${props.length}</div><div class="l">Addresses</div></div>
@@ -410,6 +554,8 @@ function reportsBody(){
     <div class="tbl-wrap"><table><thead><tr><th>Reason</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('reason',DELAY_REASONS)}</tbody></table></div>
     ${open.length?`<div class="list">${open.sort((a,b)=>String(a.started).localeCompare(String(b.started))).map(d=>delayRow(d,true)).join('')}</div>`:''}`})()}
   ${S.role==='admin'?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Chase emails</b><div class="meta">Sent automatically at 7am every working day for missed snags and scaffold strikes.</div></div><button type="button" class="btn" data-act="chase-now">Send today's chases now</button></div>`:''}
+  ${(()=>{const ids=Object.keys(S.trackers).filter(id=>S.projects.has(id));if(!ids.length)return'';const pid=ids.includes(S.trkProj)?S.trkProj:ids[0];
+    return`<div class="section-h"><h3>Works tracker</h3></div>${ids.length>1?`<div class="chips">${ids.map(id=>`<button type="button" class="chip-btn" data-act="trk-proj" data-v="${id}" aria-pressed="${id===pid}">${esc(S.projects.get(id).name)}</button>`).join('')}</div>`:`<p class="meta" style="margin:-8px 0 0">${esc(S.projects.get(pid).name)}</p>`}${trackerDashboard(pid)}`})()}
   <div class="section-h"><h3>Download for Excel</h3></div>
   <div style="display:flex;flex-direction:column;gap:10px">
     <button type="button" class="btn block" data-act="export" data-v="snags">${I.dl} Snag register (.csv)</button>
@@ -423,7 +569,8 @@ function reportsBody(){
 /* ---------- templates ---------- */
 const TEMPLATE_FILES=[
   ['CB Site App - Address Upload Template.xlsx','Address upload','Fill in and upload under Addresses > Add addresses.'],
-  ['CB Site App - Projects and Contractors Setup.xlsx','Projects & contractors setup','Gather PINs, emails and contractors before setting up a project.']];
+  ['CB Site App - Projects and Contractors Setup.xlsx','Projects & contractors setup','Gather PINs, emails and contractors before setting up a project.'],
+  ['CB Works Tracker - Blank Template.xlsx','Works tracker (blank)','Set up a project\'s own tracker columns, statuses and lists. Upload it on the project in the Projects tab.']];
 const templateUrl=f=>'/templates/'+encodeURIComponent(f);
 function templatesPanel(){return`<div class="section-h"><h3>Templates</h3></div><div class="list"><button type="button" class="row" data-act="q-template"><div class="main"><span class="t">Survey questions</span><span class="s"><span>The questions ${S.projects.size===1?'this project uses':'the app is using'} now.${canManage()?' Change them on the Projects tab.':' Mark up changes and send it to your project manager.'}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</button>${TEMPLATE_FILES.map(([f,t,d])=>`<a class="row" href="${templateUrl(f)}" download style="text-decoration:none;color:inherit"><div class="main"><span class="t">${esc(t)}</span><span class="s"><span>${esc(d)}</span></span></div><span class="tag">Excel</span>${I.dl.replace('<svg ','<svg width="22" height="22" ')}</a>`).join('')}</div>`}
 
@@ -573,6 +720,8 @@ async function shrink(file){
 }
 const toB64=blob=>new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(String(f.result).split(',')[1]);f.onerror=rej;f.readAsDataURL(blob)});
 document.addEventListener('change',async e=>{
+  if(e.target.id==='trk-upload'){const f=e.target.files[0];const pid=e.target.dataset.pid;e.target.value='';if(f)uploadTrackerFile(f,pid);return}
+  if(e.target.dataset&&e.target.dataset.statusFor){const v=e.target.value;api('updateProperty',{id:e.target.dataset.statusFor,patch:{status:v}}).then(()=>load()).then(()=>toast(v?'Status: '+v:'Status cleared')).catch(err=>toast(err.message));return}
   if(e.target.id==='q-upload'){const f=e.target.files[0];e.target.value='';if(f)uploadQuestions(f,S.qScope);return}
   const sel=e.target.closest&&e.target.closest('[data-sel]');
   if(sel){sel.checked?S.sel.add(sel.dataset.sel):S.sel.delete(sel.dataset.sel);const b=$('.selbar b');if(b)b.textContent=S.sel.size+' picked';return}
@@ -999,7 +1148,7 @@ document.addEventListener('click',e=>{
     case'retry':load();break;
     case'close-sheet':closeSheet();break;
     case'add-addresses':addAddressesSheet();break;
-    case'open-prop':S.view={name:'property',id:t.dataset.id};render();break;
+    case'open-prop':S.view={name:'property',id:t.dataset.id};S.ptab='overview';render();break;
     case'edit-prop':editPropSheet(S.props.get(S.view.id));break;
     case'set-status':api('updateProperty',{id:S.view.id,patch:{status:t.dataset.v}}).then(()=>load()).then(()=>toast('Status: '+t.dataset.v)).catch(err=>toast(err.message));break;
     case'new-survey':pickSurveyType(S.props.get(S.view.id));break;
@@ -1016,6 +1165,14 @@ document.addEventListener('click',e=>{
     case'open-project':projectSheet(S.projects.get(t.dataset.id));break;
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
+    case'trk-proj':S.trkProj=t.dataset.v;renderBody();break;
+    case'ptab':S.ptab=t.dataset.v;renderBody();break;
+    case'tgroup':{const g=t.dataset.v;S.tOpen.has(g)?S.tOpen.delete(g):S.tOpen.add(g);renderBody();break}
+    case'tracker-edit':trackerSheet(S.props.get(S.view.id));break;
+    case'trk-download':downloadTracker(t.dataset.id,t);break;
+    case'trk-folder':api('trackerFolder',{project_id:t.dataset.id,folder:$('#trk-folder').value}).then(()=>load()).then(()=>toast('Folder saved')).catch(e=>toast(e.message));break;
+    case'trk-remove':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again: the project goes back to the standard statuses (answers are kept)';return}
+      api('trackerRemove',{project_id:t.dataset.id}).then(()=>load()).then(()=>{closeSheet();toast('Tracker switched off')}).catch(e=>toast(e.message));break;
     case'asb-f':S.asb=t.dataset.v;renderBody();break;
     case'q-template':{const ids=[...S.projects.keys()];downloadQuestionsTemplate(t,ids.length===1?ids[0]:null);break}
     case'chase-now':t.disabled=true;api('runChaseNow',{}).then(async r=>{await load();toast(r.skipped?r.skipped:`Sent ${r.snags} snag and ${r.scaffolds} scaffold chase${r.snags+r.scaffolds===1?'':'s'}${r.failed?`, ${r.failed} failed`:''}`)}).catch(e=>{t.disabled=false;toast(e.message)});break;
