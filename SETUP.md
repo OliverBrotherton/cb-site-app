@@ -77,6 +77,9 @@ PMs can give a project its own tracker, in the CB Works Tracker format:
 
 Every address on the project then has an **Overview** and a **Tracker** tab, the project's statuses replace the standard ones, the Progress tab shows the tracker dashboard, and **Download tracker** gives the spreadsheet in the same format, filled in, with its dashboard. Paste the SharePoint folder link on the project now; the spreadsheet will appear there once SharePoint access is set up.
 
+## No signal (offline mode)
+The app keeps a copy of itself and of the last loaded jobs on each phone. With no signal it still opens, shows addresses and lets people raise snags (with photos), do surveys, update the tracker, log delays and asbestos checks. These wait on the phone ("1 waiting to send") and send by themselves when signal comes back. Things that need other people or the office (setting up projects, PINs, uploads) need signal. On iPhones, add the app to the home screen so the saved copy isn't cleared.
+
 ## Changing survey questions
 In the app: **Projects tab > Survey questions**. PMs can change the questions on projects they run; the admin can also change the **company questions**, which every project uses unless it has its own.
 1. **Download template.** It's built from the questions in use right now.

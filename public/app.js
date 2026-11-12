@@ -38,13 +38,42 @@ function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch
 function save(){try{localStorage.setItem('cbsa',JSON.stringify({token:S.token,name:S.name,email:S.email}))}catch(e){}}
 
 /* ---------- server ---------- */
-async function api(action,payload){
+/* ---------- offline: a copy of the jobs on the phone, and an outbox for work done with no signal ---------- */
+// Things that can be done with no signal; they're held on the phone and sent in order later
+const QUEUEABLE=new Set(['createSnag','saveSurvey','updateTracker','saveDelay','saveAsbestos','snagAction','closeOut','scaffoldReply','createScaffold','updateProperty']);
+const CREATES=new Set(['createSnag','saveSurvey','saveDelay','createScaffold']);
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+const idb=(()=>{
+  let dbp;
+  const open=()=>dbp||(dbp=new Promise((res,rej)=>{const r=indexedDB.open('cbsa',1);r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('kv');d.createObjectStore('outbox',{keyPath:'id'});d.createObjectStore('blobs')};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+  const run=async(store,mode,fn)=>{const d=await open();return new Promise((res,rej)=>{const t=d.transaction(store,mode);const req=fn(t.objectStore(store));t.oncomplete=()=>res(req&&'result' in req?req.result:undefined);t.onerror=()=>rej(t.error)})};
+  const safe=f=>async(...a)=>{try{return await f(...a)}catch(e){return undefined}};
+  return{get:safe((st,k)=>run(st,'readonly',s=>s.get(k))),put:safe((st,v,k)=>run(st,'readwrite',s=>k===undefined?s.put(v):s.put(v,k))),del:safe((st,k)=>run(st,'readwrite',s=>s.delete(k))),all:safe(st=>run(st,'readonly',s=>s.getAll()))};
+})();
+S.outbox=[];S.problems=[];S.localUrls={};S.offline=false;
+const snapKey=()=>(S.ctoken?'c:'+S.ctoken:'s:'+S.role)+':data';
+const QUEUED_MSG='No signal: saved on this phone. It will send by itself when you\'re back in signal.';
+async function queueWork(action,payload){
+  const item={id:uuid(),action,payload,at:Date.now(),who:S.name};
+  S.outbox.push(item);await idb.put('outbox',item);
+  closeSheet();S.offline=true;renderBody();
+  throw{queued:true,message:QUEUED_MSG};
+}
+async function api(action,payload,opts={}){
+  payload=payload||{};
+  if(CREATES.has(action)&&!payload.id&&!payload.create_id)payload.create_id=uuid();
+  // Keep things in order: while anything is waiting, new work joins the queue
+  if(!opts.direct&&QUEUEABLE.has(action)&&(S.outbox.length||navigator.onLine===false))return queueWork(action,payload);
   const h={'content-type':'application/json'};
   if(S.ctoken)h['x-contractor']=S.ctoken;else if(S.token)h.authorization='Bearer '+S.token;
   if(S.name)h['x-name']=encodeURIComponent(S.name);
   let r;
   try{r=await fetch('/api/rpc',{method:'POST',headers:h,body:JSON.stringify({action,payload})})}
-  catch(e){throw{message:'No signal. Try again when you\'re back in signal.'}}
+  catch(e){
+    if(!opts.direct&&QUEUEABLE.has(action))return queueWork(action,payload);
+    S.offline=true;throw{network:true,message:'No signal. This needs signal, so try again when you\'re back in signal.'};
+  }
+  if(S.offline&&r.ok){S.offline=false;setTimeout(flushOutbox,50)}
   const j=await r.json().catch(()=>({}));
   if(!r.ok||!j.ok){
     if(r.status===401&&!S.ctoken&&action!=='login'){signOut(j.error||'Enter your PIN again.')}
@@ -52,12 +81,68 @@ async function api(action,payload){
   }
   return j.data;
 }
+// Photos taken with no signal are kept on the phone and uploaded before the work they belong to
+async function keepPhotoOffline(blob){const key='local:'+uuid();await idb.put('blobs',blob,key);S.localUrls[key]=URL.createObjectURL(blob);return key}
+async function swapLocalPhotos(item){
+  const found=new Set();JSON.stringify(item.payload,(k,v)=>{if(typeof v==='string'&&v.startsWith('local:'))found.add(v);return v});
+  for(const key of found){
+    const blob=await idb.get('blobs',key);
+    if(!blob){item.payload=JSON.parse(JSON.stringify(item.payload,(k,v)=>Array.isArray(v)?v.filter(x=>x!==key):v));continue}
+    const type=blob.type==='application/pdf'?'application/pdf':'image/jpeg';
+    const r=await api('uploadPhoto',{data:await toB64(blob),type},{direct:true});
+    item.payload=JSON.parse(JSON.stringify(item.payload,(k,v)=>v===key?r.path:v));
+    await idb.put('outbox',item);await idb.del('blobs',key);
+  }
+}
+let flushing=false;
+async function flushOutbox(){
+  if(flushing||!S.outbox.length||navigator.onLine===false)return;
+  flushing=true;let sent=0;
+  try{
+    while(S.outbox.length){
+      const item=S.outbox[0];
+      try{await swapLocalPhotos(item);await api(item.action,item.payload,{direct:true});sent++}
+      catch(e){
+        if(e.network)break;
+        // Done already (e.g. sent before the signal dropped) counts as sent; anything else is kept to show why
+        if(/already/i.test(e.message||''))sent++;else{item.problem=e.message;S.problems.push(item);await idb.put('kv',S.problems,'problems')}
+      }
+      S.outbox.shift();await idb.del('outbox',item.id);
+    }
+  }finally{flushing=false;renderBody();if(sent){toast(`Sent ${sent} thing${sent>1?'s':''} saved while you had no signal`);load()}}
+}
+function describeWork(it){
+  const p=it.payload||{};const prop=S.props.get(p.property_id)||{};const at=prop.address?' · '+prop.address:'';
+  return({createSnag:`New snag: ${p.title||''}${at}`,saveSurvey:`${WORKS[p.type]||''} survey${at}`,updateTracker:`Tracker update${at}`,saveDelay:`Delay: ${p.reason||''}${at}`,saveAsbestos:`Asbestos check`,snagAction:`Snag ${p.op==='fixed'?'marked fixed':p.op==='close'?'signed off':'reopened'}`,closeOut:'Snag closed out',scaffoldReply:p.op==='confirm'?'Scaffold date confirmed':'Scaffold marked done',createScaffold:`Scaffold call-off${at}`,updateProperty:'Status change'})[it.action]||it.action;
+}
+function offlineBanner(){
+  let h='';
+  if(S.offline)h+=`<div class="banner" style="background:var(--info-soft);color:var(--info)"><b>No signal.</b> ${S.savedAt?`Showing what was saved ${ago(S.savedAt)==='today'?'today':ago(S.savedAt)} at ${new Date(S.savedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}. `:''}You can still raise snags, do surveys and update the tracker. They'll send when you're back in signal.</div>`;
+  if(S.outbox.length)h+=`<div class="email-line unsent"><span style="flex:1;min-width:0"><b>${S.outbox.length} waiting to send</b> from this phone.</span><button type="button" class="btn" data-act="outbox">See them</button></div>`;
+  if(S.problems.length)h+=`<div class="email-line unsent" style="background:var(--bad-soft);color:var(--bad)"><span style="flex:1;min-width:0"><b>${S.problems.length} couldn't be sent.</b></span><button type="button" class="btn" data-act="outbox">See why</button></div>`;
+  return h;
+}
+function outboxSheet(){
+  openSheet({title:'Saved on this phone',
+   body:`${S.outbox.length?`<div class="field"><span class="lab">Waiting to send (${S.outbox.length})</span><div class="notes-box" style="white-space:normal">${S.outbox.map(it=>`${esc(describeWork(it))} <span class="meta">· ${fmtDate(it.at)}</span>`).join('<br>')}</div><p class="help">These send by themselves when you're back in signal. Keep the app open on this phone until they've gone.</p></div>`:'<p class="meta" style="margin:0">Nothing waiting to send.</p>'}
+   ${S.problems.length?`<div class="field"><span class="lab">Couldn't be sent (${S.problems.length})</span><div class="notes-box" style="white-space:normal">${S.problems.map(it=>`<b>${esc(describeWork(it))}</b><br><span class="meta">${esc(it.problem||'')}</span>`).join('<br><br>')}</div><p class="help">Usually because something changed while you had no signal. Do it again in the app.</p></div>`:''}`,
+   foot:`${S.problems.length?`<button type="button" class="btn" data-act="ob-clear">Clear the problems list</button>`:''}${S.outbox.length?`<button type="button" class="btn primary" data-act="ob-send">Try sending now</button>`:''}`,
+   acts:{'ob-send':async b=>{b.disabled=true;await flushOutbox();closeSheet();if(S.outbox.length)toast('Still no signal. They\'ll send when it comes back.')},
+         'ob-clear':async()=>{S.problems=[];await idb.put('kv',[],'problems');closeSheet();renderBody()}}});
+}
 let loading=null;
 async function load(){
   if(loading)return loading;
   loading=(async()=>{
     try{
-      const d=await api('data');
+      let d;
+      try{d=await api('data');S.offline=false;S.savedAt=Date.now();idb.put('kv',{d,at:S.savedAt},(S.ctoken?'c:'+S.ctoken:'s:'+(d.role||''))+':data');idb.put('kv',d.role,'lastRole')}
+      catch(e){
+        if(!e.network)throw e;
+        const role=S.role||await idb.get('kv','lastRole');const snap=await idb.get('kv',(S.ctoken?'c:'+S.ctoken:'s:'+(role||''))+':data');
+        if(!snap)throw{message:'No signal, and this phone hasn\'t loaded the jobs yet. Open the app once with signal first.'};
+        d=snap.d;S.savedAt=snap.at;S.offline=true;
+      }
       S.role=d.role;S.emailReady=d.emailReady;S.questions=d.questions||null;useQuestions(d.questions);S.trackers=d.trackers||{};
       for(const [k,list] of [['pms',d.pms||[]],['projects',d.projects],['contractors',d.contractors],['props',d.properties],['surveys',d.surveys],['snags',d.snags],['scaffolds',d.scaffolds||[]],['delays',d.delays||[]]]){S[k]=new Map(list.map(x=>[x.id,x]))}
       S.me=d.me;if(d.role==='contractor')S.mode='contractor';
@@ -70,7 +155,7 @@ async function load(){
   })();
   return loading;
 }
-const src=p=>'/api/photo?p='+encodeURIComponent(p)+'&s='+encodeURIComponent(S.ctoken||S.token);
+const src=p=>String(p).startsWith('local:')?(S.localUrls[p]||''):'/api/photo?p='+encodeURIComponent(p)+'&s='+encodeURIComponent(S.ctoken||S.token);
 
 /* ---------- PIN screen ---------- */
 function showGate(msg){
@@ -133,8 +218,8 @@ function renderBody(){
   const nOpen=[...S.snags.values()].filter(s=>s.status!=='closed').length;
   const nc=$('#nav-snag-count');nc.hidden=!nOpen;nc.textContent=nOpen;
   if(!S.ready){el.innerHTML=S.loadError?`<div class="empty"><h3>Couldn't load your jobs</h3><p>${esc(S.loadError)}</p><button type="button" class="btn primary" data-act="retry">Try again</button></div>`:'<div class="loading">Loading your jobs…</div>';return}
-  if(S.mode==='contractor'){el.innerHTML=contractorBody();return}
-  el.innerHTML=S.view?propertyBody():S.tab==='addresses'?addressesBody():S.tab==='snags'?snagsBody():S.tab==='projects'?projectsBody():reportsBody();
+  if(S.mode==='contractor'){el.innerHTML=offlineBanner()+contractorBody();return}
+  el.innerHTML=offlineBanner()+(S.view?propertyBody():S.tab==='addresses'?addressesBody():S.tab==='snags'?snagsBody():S.tab==='projects'?projectsBody():reportsBody());
 }
 
 /* ---------- projects & contractors ---------- */
@@ -266,7 +351,7 @@ function propertyBody(){
   const dls=delaysOf(p.id);
   const sc=[...S.scaffolds.values()].filter(x=>x.property_id===p.id).sort((a,b)=>(b.requested_at||0)-(a.requested_at||0));
   const sns=[...S.snags.values()].filter(s=>s.property_id===p.id).sort((a,b)=>((a.status==='closed')-(b.status==='closed'))||(b.raised_at||0)-(a.raised_at||0));
-  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}${openDelay(p.id)?`<span class="pill p-warn">Delayed ${delaysOf(p.id).filter(d=>d.status!=='resolved').reduce((n,d)=>n+delayDays(d),0)} days</span>`:''}</div></div>`+tabsFor(p)+(trackerOf(p)&&S.ptab==='tracker'?trackerTab(p):`
+  return`${asbBanner(p,true)}<div class="prop-head"><h1>${esc(p.address)}</h1><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="pc">${esc(p.postcode||'')}</span>${p.ref?`<span class="meta mono">Ref ${esc(p.ref)}</span>`:''}${projectName(p)?`<span class="tag">${esc(projectName(p))}</span>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}${openDelay(p.id)?`<span class="pill p-warn">Delayed ${delaysOf(p.id).filter(d=>d.status!=='resolved').reduce((n,d)=>n+delayDays(d),0)} days</span>`:''}</div></div>`+waitingFor(p)+tabsFor(p)+(trackerOf(p)&&S.ptab==='tracker'?trackerTab(p):`
   ${statusBlock(p)}
   ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
   <div class="panel" style="display:flex;flex-direction:column;gap:10px">
@@ -308,6 +393,10 @@ function tabsFor(p){
 }
 const tFmt=(f,v)=>!v?'':(f.type==='date'||f.type==='date_na')&&/^\d{4}-/.test(v)?fmtDue(v):v;
 function trackerGroups(tr){const g=[];tr.fields.forEach(f=>{let x=g.find(y=>y.name===f.group);if(!x)g.push(x={name:f.group,fields:[]});x.fields.push(f)});return g}
+function waitingFor(p){
+  const mine=S.outbox.filter(it=>(it.payload||{}).property_id===p.id||(it.payload||{}).id===p.id);
+  return mine.length?`<div class="panel" style="display:flex;flex-direction:column;gap:6px;border-color:var(--warn)"><b>Waiting to send from this phone</b><div class="meta">${mine.map(it=>esc(describeWork(it))).join('<br>')}</div></div>`:'';
+}
 function trackerTab(p){
   const tr=trackerOf(p);const v=p.tracker||{};
   return`<p class="meta" style="margin:0">${p.tracker_updated_at?`Updated ${ago(p.tracker_updated_at)}${p.tracker_updated_by?' by '+esc(p.tracker_updated_by):''}.`:'Nothing filled in yet.'} Tap a group to see it.</p>
@@ -738,8 +827,12 @@ document.addEventListener('change',async e=>{
     const pdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
     const item={pending:true,pdf,local:pdf?'':URL.createObjectURL(f)};S.photos[key].push(item);refreshThumbs(key);
     try{
-      if(pdf){if(f.size>3*1024*1024)throw{message:'That PDF is over 3 MB. Take photos of the key pages instead.'};const r=await api('uploadPhoto',{data:await toB64(f),type:'application/pdf'});item.path=r.path;item.pending=false}
-      else{const blob=await shrink(f);if(!blob)throw{message:'That photo couldn\'t be read'};const r=await api('uploadPhoto',{data:await toB64(blob),type:'image/jpeg'});item.path=r.path;item.pending=false}
+      const up=async(blob,type)=>{
+        if(navigator.onLine!==false){try{return(await api('uploadPhoto',{data:await toB64(blob),type})).path}catch(err){if(!err.network)throw err}}
+        return keepPhotoOffline(blob);
+      };
+      if(pdf){if(f.size>3*1024*1024)throw{message:'That PDF is over 3 MB. Take photos of the key pages instead.'};item.path=await up(f,'application/pdf');item.pending=false}
+      else{const blob=await shrink(f);if(!blob)throw{message:'That photo couldn\'t be read'};item.path=await up(blob,'image/jpeg');item.pending=false}
     }
     catch(err){const l=S.photos[key];if(l)l.splice(l.indexOf(item),1);toast(err.message||'That photo didn\'t upload. Try again.')}
     refreshThumbs(key);
@@ -1186,6 +1279,7 @@ document.addEventListener('click',e=>{
     case'new-pm':pmSheet(null);break;
     case'rep-proj':S.repProj=t.dataset.v;renderBody();break;
     case'trk-proj':S.trkProj=t.dataset.v;renderBody();break;
+    case'outbox':outboxSheet();break;
     case'ptab':S.ptab=t.dataset.v;renderBody();break;
     case'tgroup':{const g=t.dataset.v;S.tOpen.has(g)?S.tOpen.delete(g):S.tOpen.add(g);renderBody();break}
     case'tracker-edit':trackerSheet(S.props.get(S.view.id));break;
@@ -1205,7 +1299,9 @@ document.addEventListener('click',e=>{
     case'open-scaffold':{const x=S.scaffolds.get(t.dataset.id);if(x)scaffoldSheet(x);break}
     case'open-pm':pmSheet(S.pms.get(t.dataset.id));break;
     case'change-name':nameSheet();break;
-    case'sign-out':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again: you\'ll need the PIN to get back in';return}signOut();break;
+    case'sign-out':if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent=S.outbox.length?`Tap again: ${S.outbox.length} unsent item${S.outbox.length>1?'s':''} will be lost`:'Tap again: you\'ll need the PIN to get back in';return}
+      // Locking the phone also wipes the saved copy of the jobs from it
+      ['admin','pm','staff'].forEach(r=>idb.del('kv','s:'+r+':data'));S.outbox.forEach(it=>idb.del('outbox',it.id));S.outbox=[];signOut();break;
     case'copy':copyText(t.dataset.v,t);break;
     case'sel-start':S.selecting=true;S.sel=new Set();renderBody();break;
     case'sel-cancel':S.selecting=false;S.sel.clear();renderBody();break;
@@ -1232,6 +1328,16 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.ready)l
 setInterval(()=>{if(!document.hidden&&S.ready)load()},30000);
 
 /* ---------- boot ---------- */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+window.addEventListener('online',()=>{flushOutbox();if(S.ready)load()});
+window.addEventListener('offline',()=>{S.offline=true;renderBody()});
+setInterval(()=>{if(S.outbox.length)flushOutbox()},20000);
+(async function readOutbox(){
+  const items=await idb.all('outbox')||[];S.outbox=items.sort((a,b)=>a.at-b.at);S.problems=await idb.get('kv','problems')||[];
+  const found=new Set();JSON.stringify(S.outbox,(k,v)=>{if(typeof v==='string'&&v.startsWith('local:'))found.add(v);return v});
+  for(const key of found){const b=await idb.get('blobs',key);if(b)S.localUrls[key]=URL.createObjectURL(b)}
+  if(S.ready)renderBody();if(S.outbox.length)flushOutbox();
+})();
 (function boot(){
   const c=new URLSearchParams(location.search).get('c');
   if(c){S.ctoken=c;S.mode='contractor';startApp();return}

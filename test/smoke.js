@@ -552,6 +552,42 @@ try {
   await admin.waitForFunction(() => /Sent \d+ snag|Not a working day/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 8000 });
   ok(true, 'admin can send today\'s chases now');
 
+  // ---------- no signal ----------
+  await staff.reload(); await staff.waitForSelector('[data-act=open-prop]');
+  await staff.evaluate(() => navigator.serviceWorker.ready);
+  await staff.waitForTimeout(500);
+  const snagsBefore = (await api('data', {}, { authorization: 'Bearer ' + tok })).data.snags.length;
+  const mailsBefore = (await emails()).length;
+  await staff.context().setOffline(true);
+  await staff.reload();
+  await staff.waitForSelector('[data-act=open-prop]', { timeout: 10000 });
+  ok(await staff.isVisible('text=No signal.'), 'app opens with no signal and shows the saved jobs');
+  await staff.click('[data-act=open-prop] >> text=14 Elm Grove');
+  await staff.click('[data-act=new-snag][data-pid]');
+  await staff.setInputFiles('[data-photo-cam=snag]', 'public/icon-192.png');
+  await staff.waitForSelector('[data-photos=snag] img[data-act=view-photo]');
+  await staff.fill('#sn-t', 'Fascia joint open (raised offline)');
+  await staff.selectOption('#sn-c', { label: 'Smith Plumbing Ltd (Plumber)' });
+  await staff.click('[data-act=sn-save]');
+  await toastHas(staff, 'saved on this phone');
+  ok(await staff.isVisible('text=1 waiting to send') && await staff.isVisible('text=Waiting to send from this phone'), 'snag raised with no signal waits on the phone');
+  await shot(staff, '20-offline');
+  await staff.click('.nav [data-tab=projects]'); await staff.click('[data-act=add-pin]');
+  await staff.fill('#ap-pin', '123123'); await staff.click('[data-act=ap-go]');
+  await toastHas(staff, 'needs signal');
+  ok(true, 'things that need signal say so');
+  await staff.click('[data-act=close-sheet]').catch(() => {});
+  await staff.context().setOffline(false);
+  await toastHas(staff, 'saved while you had no signal');
+  const after = (await api('data', {}, { authorization: 'Bearer ' + tok })).data.snags;
+  const sent = after.find(x => x.title === 'Fascia joint open (raised offline)');
+  ok(after.length === snagsBefore + 1 && sent && sent.photos.length === 1 && !sent.photos[0].startsWith('local:'), 'snag and photo sent when signal comes back');
+  ok((await emails()).length > mailsBefore, 'contractor emailed once it sent');
+  const cid = '11111111-2222-4333-8444-555555555555';
+  const one = await api('createSnag', { property_id: sent.property_id, title: 'Retry test', create_id: cid }, { authorization: 'Bearer ' + tok });
+  const two = await api('createSnag', { property_id: sent.property_id, title: 'Retry test', create_id: cid }, { authorization: 'Bearer ' + tok });
+  ok(one.data.snag.id === cid && two.data.snag.id === cid && (await api('data', {}, { authorization: 'Bearer ' + tok })).data.snags.filter(x => x.title === 'Retry test').length === 1, 'a retried send never makes a second copy');
+
   // ---------- PIN brute force is blocked ----------
   let last;
   for (let i = 0; i < 9; i++) last = await api('login', { pin: String(100000 + i) });
