@@ -419,6 +419,23 @@ try {
   ok((await admin.textContent('#sv-form')).includes('Was the tenant in?'), 'undo puts the original questions back');
   await admin.click('[data-act=close-sheet]');
 
+  // ---------- camera, and Progress by project ----------
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
+  await admin.click('[data-act=new-snag][data-pid]');
+  ok(await admin.$eval('[data-photo-cam=snag]', el => el.getAttribute('capture') === 'environment' && !el.multiple) && await admin.$eval('[data-photo-input=snag]', el => el.multiple), 'photo boxes offer Take photo (live camera) and From gallery');
+  await admin.setInputFiles('[data-photo-cam=snag]', 'public/icon-192.png');
+  await admin.waitForSelector('[data-photos=snag] img[data-act=view-photo]');
+  ok(true, 'a camera photo uploads');
+  await admin.click('[data-act=close-sheet]');
+  await admin.click('.nav [data-tab=reports]');
+  ok(await admin.isVisible('[data-act=rep-proj][data-v=all][aria-pressed=true]'), 'Progress page starts on All projects');
+  const allCount = await admin.$eval('.tile .v', el => el.textContent);
+  await admin.click('[data-act=rep-proj] >> text=Wakefield Windows');
+  const oneCount = await admin.$eval('.tile .v', el => el.textContent);
+  ok(allCount !== oneCount && oneCount === '0', 'picking a project changes the Progress figures');
+  await admin.click('[data-act=rep-proj][data-v=all]');
+
   // ---------- works tracker ----------
   const { execFileSync } = await import('node:child_process');
   const TPL = 'public/templates/CB Works Tracker - Blank Template.xlsx';

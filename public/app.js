@@ -31,7 +31,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTi
 
 /* ---------- state ---------- */
 const S={token:'',ctoken:'',name:'',email:'',role:'',mode:'pm',ready:false,emailReady:false,
- pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),trackers:{},ptab:'overview',tOpen:new Set(),trkProj:'',asb:'all',delayF:false,
+ pms:new Map(),projects:new Map(),contractors:new Map(),props:new Map(),surveys:new Map(),snags:new Map(),scaffolds:new Map(),delays:new Map(),trackers:{},repProj:'all',ptab:'overview',tOpen:new Set(),trkProj:'',asb:'all',delayF:false,
  tab:'addresses',view:null,rendered:null,q:'',work:'all',scheme:'all',snagQ:'',snagF:'open',cF:'open',
  selecting:false,sel:new Set(),photos:{},sheetActs:{}};
 function saved(){try{return JSON.parse(localStorage.getItem('cbsa')||'{}')}catch(e){return{}}}
@@ -529,15 +529,21 @@ function nameSheet(){
 }
 
 /* ---------- reports ---------- */
+// Which addresses the Progress page and its downloads cover: all projects, or the one picked
+const repScope=()=>{const ids=new Set([...S.props.values()].filter(p=>S.repProj==='all'||!S.projects.has(S.repProj)||p.project_id===S.repProj).map(p=>p.id));return id=>ids.has(id)};
 function reportsBody(){
-  const props=[...S.props.values()],snags=[...S.snags.values()],svs=[...S.surveys.values()];
+  const inRep=repScope();
+  const props=[...S.props.values()].filter(p=>inRep(p.id)),snags=[...S.snags.values()].filter(x=>inRep(x.property_id)),svs=[...S.surveys.values()].filter(x=>inRep(x.property_id));
+  const delaysR=[...S.delays.values()].filter(x=>inRep(x.property_id)),scaffR=[...S.scaffolds.values()].filter(x=>inRep(x.property_id));
+  const projs=projectList();
+  const pick=projs.length>1?`<div class="chips">${[['all','All projects'],...projs.map(p=>[p.id,p.name])].map(([v,l])=>`<button type="button" class="chip-btn" data-act="rep-proj" data-v="${esc(v)}" aria-pressed="${(S.repProj==='all'||!S.projects.has(S.repProj)?'all':S.repProj)===v}">${esc(l)}</button>`).join('')}</div>`:'';
   const surveyed=props.filter(p=>p.status&&p.status!=='To survey').length;
   const complete=props.filter(p=>statusInfo(p).group==='Complete').length;
   const open=snags.filter(s=>s.status==='open').length,ready=snags.filter(s=>s.status==='fixed').length,overdue=snags.filter(isOverdue).length;
   const pct=(a,b)=>b?Math.round(a/b*100):0;
   const rows=Object.keys(WORKS).map(w=>{const ps=props.filter(p=>(p.works||[]).includes(w));if(!ps.length)return'';const ids=new Set(ps.map(p=>p.id));const sv=ps.filter(p=>p.status&&p.status!=='To survey').length;const cm=ps.filter(p=>statusInfo(p).group==='Complete').length;const os=snags.filter(s=>ids.has(s.property_id)&&s.status!=='closed').length;return`<tr><td>${WORKS[w]}</td><td class="n">${ps.length}</td><td class="n">${sv}</td><td class="n">${cm}</td><td class="n">${os}</td></tr>`}).join('');
   const flagged=svs.filter(s=>s.status==='submitted'&&flagsOf(s)>0);
-  return`<div class="tiles">
+  return`${pick}<div class="tiles">
    <div class="tile"><div class="v">${props.length}</div><div class="l">Addresses</div></div>
    <div class="tile"><div class="v">${pct(surveyed,props.length)}%</div><div class="l">Surveyed (${surveyed})</div><div class="bar"><i style="width:${pct(surveyed,props.length)}%"></i></div></div>
    <div class="tile"><div class="v">${pct(complete,props.length)}%</div><div class="l">Complete (${complete})</div><div class="bar"><i style="width:${pct(complete,props.length)}%"></i></div></div>
@@ -546,15 +552,15 @@ function reportsBody(){
   ${ready?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>${ready} snag${ready>1?'s':''} waiting for you to check</b><div class="meta">Marked done by the contractor or trade.</div></div><button type="button" class="btn" data-act="goto-ready">Show them</button></div>`:''}
   ${flagged.length?`<div class="section-h"><h3>Surveys with things to check</h3><span class="meta">${flagged.length}</span></div><div class="list">${flagged.map(s=>{const p=S.props.get(s.property_id)||{};return`<button type="button" class="row" data-act="open-survey" data-id="${s.id}"><div class="main"><span class="t">${esc(p.address||'Unknown')}</span><span class="s">${WORKS[s.type]} · <span style="color:var(--bad);font-weight:700">${flagsOf(s)} flagged</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
   ${(()=>{const asbN=k=>props.filter(p=>asbStatus(p)===k).length;const nc=asbN('Not checked')+asbN('No survey available');return props.length?`<div class="section-h"><h3>Asbestos</h3></div><div class="tiles"><div class="tile ${nc?'alert':''}"><div class="v">${nc}</div><div class="l">Not checked / no survey</div></div><div class="tile ${asbN('Asbestos present')?'alert':''}"><div class="v">${asbN('Asbestos present')}</div><div class="l">Asbestos present</div></div><div class="tile"><div class="v">${asbN('No asbestos found')}</div><div class="l">No asbestos</div></div><div class="tile"><div class="v">${props.filter(p=>asbStatus(p)==='Asbestos present'&&p.asb_impact==='Removal needed before works').length}</div><div class="l">Need removal first</div></div></div>`:''})()}
-  ${(()=>{const live=[...S.scaffolds.values()].filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
-  ${(()=>{const ds=[...S.delays.values()];if(!ds.length)return'';const open=ds.filter(d=>d.status!=='resolved');const lost=ds.reduce((n,d)=>n+delayDays(d),0);
+  ${(()=>{const live=scaffR.filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
+  ${(()=>{const ds=delaysR;if(!ds.length)return'';const open=ds.filter(d=>d.status!=='resolved');const lost=ds.reduce((n,d)=>n+delayDays(d),0);
     const by=(k,list)=>list.map(v=>{const x=ds.filter(d=>(d[k]||'Not set')===v);return x.length?`<tr><td>${esc(v)}</td><td class="n">${x.length}</td><td class="n">${x.reduce((n,d)=>n+delayDays(d),0)}</td></tr>`:''}).join('');
     return`<div class="section-h"><h3>Delays</h3></div><div class="tiles"><div class="tile ${open.length?'alert':''}"><div class="v">${open.length}</div><div class="l">Ongoing delays</div></div><div class="tile"><div class="v">${lost}</div><div class="l">Days lost in total</div></div><div class="tile"><div class="v">${new Set(ds.map(d=>d.property_id)).size}</div><div class="l">Addresses delayed</div></div><div class="tile"><div class="v">${ds.filter(d=>d.cause==='Tenant'||d.cause==='Client').reduce((n,d)=>n+delayDays(d),0)}</div><div class="l">Days down to tenant or client</div></div></div>
     <div class="tbl-wrap"><table><thead><tr><th>Who's responsible</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('cause',[...DELAY_CAUSES,'Not set'])}</tbody></table></div>
     <div class="tbl-wrap"><table><thead><tr><th>Reason</th><th class="n">Delays</th><th class="n">Days lost</th></tr></thead><tbody>${by('reason',DELAY_REASONS)}</tbody></table></div>
     ${open.length?`<div class="list">${open.sort((a,b)=>String(a.started).localeCompare(String(b.started))).map(d=>delayRow(d,true)).join('')}</div>`:''}`})()}
   ${S.role==='admin'?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Chase emails</b><div class="meta">Sent automatically at 7am every working day for missed snags and scaffold strikes.</div></div><button type="button" class="btn" data-act="chase-now">Send today's chases now</button></div>`:''}
-  ${(()=>{const ids=Object.keys(S.trackers).filter(id=>S.projects.has(id));if(!ids.length)return'';const pid=ids.includes(S.trkProj)?S.trkProj:ids[0];
+  ${(()=>{const ids=Object.keys(S.trackers).filter(id=>S.projects.has(id)&&(S.repProj==='all'||!S.projects.has(S.repProj)||id===S.repProj));if(!ids.length)return'';const pid=ids.includes(S.trkProj)?S.trkProj:ids[0];
     return`<div class="section-h"><h3>Works tracker</h3></div>${ids.length>1?`<div class="chips">${ids.map(id=>`<button type="button" class="chip-btn" data-act="trk-proj" data-v="${id}" aria-pressed="${id===pid}">${esc(S.projects.get(id).name)}</button>`).join('')}</div>`:`<p class="meta" style="margin:-8px 0 0">${esc(S.projects.get(pid).name)}</p>`}${trackerDashboard(pid)}`})()}
   <div class="section-h"><h3>Download for Excel</h3></div>
   <div style="display:flex;flex-direction:column;gap:10px">
@@ -703,7 +709,8 @@ function docThumb(path){return isPdf(path)?`<a class="thumb" href="${src(path)}"
 function thumbs(key){
   const l=S.photos[key]||[];
   return l.map((p,i)=>(p.pdf||isPdf(p.path))?`<div class="thumb ${p.pending?'pending':''}" style="display:grid;place-items:center;font-weight:700;color:var(--red)">PDF${p.pending?'':`<button type="button" class="thumb-x" data-act="rm-photo" data-key="${key}" data-i="${i}" aria-label="Remove file">×</button>`}</div>`:`<div class="thumb ${p.pending?'pending':''}"><img src="${p.pending?p.local:src(p.path)}" alt="Photo ${i+1}" ${p.pending?'':`data-act="view-photo" data-src="${src(p.path)}"`}>${p.pending?'':`<button type="button" class="thumb-x" data-act="rm-photo" data-key="${key}" data-i="${i}" aria-label="Remove photo">×</button>`}</div>`).join('')
-   +`<label class="thumb add">${I.cam}<span>${l.pdf?'Add PDF or photo':'Add photo'}</span><input type="file" accept="${l.pdf?'image/*,application/pdf':'image/*'}" multiple data-photo-input="${key}" aria-label="Add photo"></label>`;
+   +`<label class="thumb add">${I.cam}<span>Take photo</span><input type="file" accept="image/*" capture="environment" data-photo-cam="${key}" aria-label="Take a photo with the camera"></label>`
+   +`<label class="thumb add">${I.up}<span>${l.pdf?'PDF or gallery':'From gallery'}</span><input type="file" accept="${l.pdf?'image/*,application/pdf':'image/*'}" multiple data-photo-input="${key}" aria-label="Add from gallery"></label>`;
 }
 function refreshThumbs(key){const el=document.querySelector(`[data-photos="${key}"]`);if(el)el.innerHTML=thumbs(key)}
 const photoPaths=key=>(S.photos[key]||[]).filter(p=>p.path).map(p=>p.path);
@@ -725,8 +732,8 @@ document.addEventListener('change',async e=>{
   if(e.target.id==='q-upload'){const f=e.target.files[0];e.target.value='';if(f)uploadQuestions(f,S.qScope);return}
   const sel=e.target.closest&&e.target.closest('[data-sel]');
   if(sel){sel.checked?S.sel.add(sel.dataset.sel):S.sel.delete(sel.dataset.sel);const b=$('.selbar b');if(b)b.textContent=S.sel.size+' picked';return}
-  const inp=e.target.closest&&e.target.closest('[data-photo-input]');if(!inp)return;
-  const key=inp.dataset.photoInput;const files=[...inp.files];inp.value='';
+  const inp=e.target.closest&&e.target.closest('[data-photo-input],[data-photo-cam]');if(!inp)return;
+  const key=inp.dataset.photoInput||inp.dataset.photoCam;const files=[...inp.files];inp.value='';
   for(const f of files){
     const pdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
     const item={pending:true,pdf,local:pdf?'':URL.createObjectURL(f)};S.photos[key].push(item);refreshThumbs(key);
@@ -1118,17 +1125,18 @@ function contractorSnagSheet(s){
 /* ---------- exports ---------- */
 function csv(rows){return rows.map(r=>r.map(v=>{v=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n')}
 function exportCsv(kind){
-  const P=id=>S.props.get(id)||{};let rows,name;const d=todayISO();
+  const P=id=>S.props.get(id)||{};let rows,name;const inRep=repScope();
+  const d=todayISO()+(S.repProj!=='all'&&S.projects.has(S.repProj)?'-'+S.projects.get(S.repProj).name.replace(/[^\w-]+/g,'-'):'');
   if(kind==='snags'){name=`snag-register-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Snag','Where','Contractor','Trade','Priority','Status','Raised','Raised by','Fix by','Fixed','Signed off','Overdue','Notes','Photos']];
-    [...S.snags.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(s=>{const p=P(s.property_id);const c=S.contractors.get(s.contractor_id);rows.push([snagRef(s),p.address,p.postcode,projectName(p),s.title,s.location,c?c.name:'Own team',s.trade,s.priority,(SNAG[s.status]||SNAG.open)[0],fmtDate(s.raised_at),s.raised_by,fmtDue(s.due),fmtDate(s.fixed_at),s.status==='closed'?fmtDate(s.closed_at):'',isOverdue(s)?'Yes':'',s.notes,(s.photos||[]).length])})}
+    [...S.snags.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>a.ref_no-b.ref_no).forEach(s=>{const p=P(s.property_id);const c=S.contractors.get(s.contractor_id);rows.push([snagRef(s),p.address,p.postcode,projectName(p),s.title,s.location,c?c.name:'Own team',s.trade,s.priority,(SNAG[s.status]||SNAG.open)[0],fmtDate(s.raised_at),s.raised_by,fmtDue(s.due),fmtDate(s.fixed_at),s.status==='closed'?fmtDate(s.closed_at):'',isOverdue(s)?'Yes':'',s.notes,(s.photos||[]).length])})}
   else if(kind==='surveys'){name=`survey-answers-${d}.csv`;rows=[['Address','Postcode','Project','Survey','Status','Date','Surveyor','Section','Question','Answer','Flag']];
-    [...S.surveys.values()].forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type,sv).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
+    [...S.surveys.values()].filter(x=>inRep(x.property_id)).forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type,sv).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
   else if(kind==='delays'){name=`delays-${d}.csv`;rows=[['Address','Postcode','UPRN / ref','Project','Reason','Responsible','Started','Ended','Days lost','Status','Notes','Logged by','Logged on']];
-    [...S.delays.values()].sort((a,b)=>String(a.started).localeCompare(String(b.started))).forEach(x=>{const p=P(x.property_id);rows.push([p.address,p.postcode,p.ref,projectName(p),x.reason,x.cause,fmtDue(x.started),x.ended?fmtDue(x.ended):'Ongoing',delayDays(x),x.status==='resolved'?'Resolved':'Ongoing',x.notes,x.logged_by,fmtDate(x.logged_at)])})}
+    [...S.delays.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>String(a.started).localeCompare(String(b.started))).forEach(x=>{const p=P(x.property_id);rows.push([p.address,p.postcode,p.ref,projectName(p),x.reason,x.cause,fmtDue(x.started),x.ended?fmtDue(x.ended):'Ongoing',delayDays(x),x.status==='resolved'?'Resolved':'Ongoing',x.notes,x.logged_by,fmtDate(x.logged_at)])})}
   else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Scaffolder','Status','Strike requested for','Confirmed date','Struck','Called off','Called off by','Checks done','Notes']];
-    [...S.scaffolds.values()].sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),p.address,p.postcode,projectName(p),c?c.name:'',(SCAFF[x.status]||SCAFF.requested)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
+    [...S.scaffolds.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),p.address,p.postcode,projectName(p),c?c.name:'',(SCAFF[x.status]||SCAFF.requested)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
   else{name=`addresses-${d}.csv`;rows=[['UPRN / ref','Address','Postcode','Project','Work','Status','Open snags','Asbestos','Asbestos where','Affects works','Asbestos survey ref','Asbestos survey date','Access notes']];
-    sortedProps().forEach(p=>rows.push([p.ref,p.address,p.postcode,projectName(p),(p.works||[]).map(w=>WORKS[w]).join('; '),p.status,openSnagCount(p.id),asbStatus(p),p.asb_notes,p.asb_impact,p.asb_ref,fmtDue(p.asb_date),p.notes]))}
+    sortedProps().filter(p=>inRep(p.id)).forEach(p=>rows.push([p.ref,p.address,p.postcode,projectName(p),(p.works||[]).map(w=>WORKS[w]).join('; '),p.status,openSnagCount(p.id),asbStatus(p),p.asb_notes,p.asb_impact,p.asb_ref,fmtDue(p.asb_date),p.notes]))}
   if(rows.length<2){toast('Nothing to download yet');return}
   const url=URL.createObjectURL(new Blob(['﻿'+csv(rows)],{type:'text/csv'}));
   const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
@@ -1165,6 +1173,7 @@ document.addEventListener('click',e=>{
     case'open-project':projectSheet(S.projects.get(t.dataset.id));break;
     case'add-pin':addPinSheet();break;
     case'new-pm':pmSheet(null);break;
+    case'rep-proj':S.repProj=t.dataset.v;renderBody();break;
     case'trk-proj':S.trkProj=t.dataset.v;renderBody();break;
     case'ptab':S.ptab=t.dataset.v;renderBody();break;
     case'tgroup':{const g=t.dataset.v;S.tOpen.has(g)?S.tOpen.delete(g):S.tOpen.add(g);renderBody();break}
