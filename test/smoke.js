@@ -205,7 +205,7 @@ try {
   await admin.click('[data-act=pj-save]'); await toastHas(admin, 'Project saved');
   await admin.click('.nav [data-tab=addresses]');
   await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
-  await admin.click('[data-act=new-scaffold]');
+  await admin.click('[data-act=new-scaffold][data-v=strike]');
   ok((await admin.locator('#sf-c option').count()) === 1, 'only scaffolders offered');
   await admin.click('label.check:has(input[value="All work at height finished"])');
   await shot(admin, '13-scaffold');
@@ -236,6 +236,39 @@ try {
   await admin.reload(); await admin.waitForSelector('#vbody .list');
   await admin.click('[data-act=open-prop] >> text=12 Elm Grove');
   ok(await admin.isVisible('[data-act=open-scaffold] >> text=Struck'), 'call-off shows as struck on the address');
+
+  // ---------- scaffold call-off to go up ----------
+  await admin.click('.nav [data-tab=addresses]');
+  await admin.click('[data-act=open-prop] >> text=14 Elm Grove');
+  await admin.click('[data-act=new-scaffold][data-v=erect]');
+  ok(await admin.isVisible('text=Highway licence in place'), 'erect call-off has its own checklist');
+  for (const box of await admin.$$('input[name=sf-k]')) await box.check();
+  await admin.click('[data-act=sf-save]'); await toastHas(admin, 'Scaffold called off and emailed');
+  em = await emails();
+  const eMail = em[em.length - 1];
+  ok(eMail.to === 'jobs@acmescaff.co.uk' && /^Scaffold erection SC-\d+/.test(eMail.subject) && eMail.text.includes('Please put up the scaffold'), 'scaffolder emailed to put it up');
+  await scaf.reload(); await scaf.waitForSelector('[data-act=open-scaffold] >> text=Erect scaffold');
+  await scaf.click('[data-act=open-scaffold] >> text=Erect scaffold');
+  await scaf.click('[data-act=cf-ok]'); await toastHas(scaf, 'Date confirmed');
+  em = await emails();
+  ok(em[em.length - 1].subject.startsWith('Erection date confirmed'), 'PM told the erection date');
+  await scaf.click('[data-act=open-scaffold] >> text=Erect scaffold');
+  await scaf.setInputFiles('[data-photo-input=struck]', 'public/icon-192.png');
+  await scaf.waitForSelector('[data-photos=struck] img[data-act=view-photo]');
+  await scaf.click('[data-act=cf-struck]');
+  ok((await scaf.textContent('[data-act=cf-struck]')).includes('No handover certificate'), 'scaffolder warned if there is no handover certificate');
+  await scaf.setInputFiles('[data-photo-input=cert]', '/tmp/cb-test.pdf');
+  await scaf.waitForFunction(() => S.photos.cert && S.photos.cert.length === 1 && !S.photos.cert[0].pending);
+  await scaf.click('[data-act=cf-struck]'); await toastHas(scaf, 'Marked as up');
+  em = await emails();
+  const upMail = em[em.length - 1];
+  ok(upMail.subject.startsWith('Scaffold up:') && upMail.attachments === 2 && upMail.text.includes('Handover certificate: Attached'), 'PM told it is up, with photo and certificate');
+  await admin.reload(); await admin.waitForSelector('[data-act=open-prop]');
+  await admin.click('[data-act=open-prop] >> text=14 Elm Grove');
+  ok(await admin.isVisible('[data-act=open-scaffold] >> text=Erect scaffold') && await admin.isVisible('[data-act=open-scaffold] .pill >> text=Up'), 'erect call-off shows as Up');
+  await admin.click('[data-act=open-scaffold] >> text=Erect scaffold');
+  ok(await admin.isVisible('#sheet >> text=Handover certificate') && await admin.isVisible('#sheet a.thumb >> text=PDF'), 'PM can open the handover certificate');
+  await admin.click('[data-act=close-sheet]');
 
   // ---------- move addresses between projects ----------
   await admin.click('.nav [data-tab=projects]');

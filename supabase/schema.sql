@@ -136,6 +136,10 @@ alter table properties add column if not exists tracker jsonb not null default '
 alter table properties add column if not exists tracker_updated_at bigint;
 alter table properties add column if not exists tracker_updated_by text not null default '';
 
+-- Added later: scaffold call-offs to go up as well as come down, with the handover certificate
+alter table scaffolds add column if not exists kind text not null default 'strike';
+alter table scaffolds add column if not exists cert_docs text[] not null default '{}';
+
 -- Added later: delays on each address
 create table if not exists delays (
   id uuid primary key default gen_random_uuid(),

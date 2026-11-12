@@ -227,7 +227,7 @@ function addressesBody(){
   for(const p of list){
     if(groups&&p.project_id!==last){last=p.project_id;rows+=`<div class="group-h">${esc(projectName(p)||'No project')}</div>`}
     const n=openSnagCount(p.id);const si=statusInfo(p);const site=trackerOf(p)&&(p.tracker||{})._site;
-    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${site?`<span class="tag">${esc(site)}</span>`:''}${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end">${si.label?`<span class="pill ${si.cls}">${esc(si.label)}</span>`:''}${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold strike</span>':''}${openDelay(p.id)?'<span class="pill p-warn">Delayed</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
+    const main=`<div class="main"><span class="t">${esc(p.address)}</span><span class="s"><span class="mono">${esc(p.postcode||'No postcode')}</span>${site?`<span class="tag">${esc(site)}</span>`:''}${(p.works||[]).map(w=>`<span class="tag">${WORKS[w]||w}</span>`).join('')}</span></div><div class="end">${si.label?`<span class="pill ${si.cls}">${esc(si.label)}</span>`:''}${asbStatus(p)==='Asbestos present'?'<span class="pill p-bad">Asbestos</span>':''}${openScaffold(p.id)?'<span class="tag">Scaffold call-off</span>':''}${openDelay(p.id)?'<span class="pill p-warn">Delayed</span>':''}${n?`<span class="badge-snags">${n} snag${n>1?'s':''}</span>`:''}</div>`;
     rows+=S.selecting?`<label class="row"><input type="checkbox" data-sel="${p.id}" ${S.sel.has(p.id)?'checked':''} style="width:24px;height:24px;accent-color:var(--red);flex:none">${main}</label>`
       :`<button type="button" class="row" data-act="open-prop" data-id="${p.id}">${main}<span class="chev">${I.chev}</span></button>`;
   }
@@ -281,7 +281,7 @@ function propertyBody(){
   ${sns.length?`<div class="list">${sns.map(s=>snagRow(s,false)).join('')}</div>`:`<p class="meta" style="margin:0">No snags at this address.</p>`}
   <div class="section-h"><h3>Scaffold</h3>${sc.length?`<span class="meta">${sc.length}</span>`:''}</div>
   ${sc.length?`<div class="list">${sc.map(scaffRow).join('')}</div>`:''}
-  <button type="button" class="btn" data-act="new-scaffold" style="align-self:flex-start">Call off scaffold to be struck</button>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-act="new-scaffold" data-v="erect">Call off scaffold to go up</button><button type="button" class="btn" data-act="new-scaffold" data-v="strike">Call off scaffold to come down</button></div>
   <div class="section-h"><h3>Delays</h3>${dls.length?`<span class="meta">${dls.reduce((n,d)=>n+delayDays(d),0)} days lost</span>`:''}</div>
   ${dls.length?`<div class="list">${dls.map(d=>delayRow(d,false)).join('')}</div>`:''}
   <button type="button" class="btn" data-act="new-delay" style="align-self:flex-start">Log a delay</button>
@@ -552,7 +552,7 @@ function reportsBody(){
   ${ready?`<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>${ready} snag${ready>1?'s':''} waiting for you to check</b><div class="meta">Marked done by the contractor or trade.</div></div><button type="button" class="btn" data-act="goto-ready">Show them</button></div>`:''}
   ${flagged.length?`<div class="section-h"><h3>Surveys with things to check</h3><span class="meta">${flagged.length}</span></div><div class="list">${flagged.map(s=>{const p=S.props.get(s.property_id)||{};return`<button type="button" class="row" data-act="open-survey" data-id="${s.id}"><div class="main"><span class="t">${esc(p.address||'Unknown')}</span><span class="s">${WORKS[s.type]} · <span style="color:var(--bad);font-weight:700">${flagsOf(s)} flagged</span></span></div><span class="chev">${I.chev}</span></button>`}).join('')}</div>`:''}
   ${(()=>{const asbN=k=>props.filter(p=>asbStatus(p)===k).length;const nc=asbN('Not checked')+asbN('No survey available');return props.length?`<div class="section-h"><h3>Asbestos</h3></div><div class="tiles"><div class="tile ${nc?'alert':''}"><div class="v">${nc}</div><div class="l">Not checked / no survey</div></div><div class="tile ${asbN('Asbestos present')?'alert':''}"><div class="v">${asbN('Asbestos present')}</div><div class="l">Asbestos present</div></div><div class="tile"><div class="v">${asbN('No asbestos found')}</div><div class="l">No asbestos</div></div><div class="tile"><div class="v">${props.filter(p=>asbStatus(p)==='Asbestos present'&&p.asb_impact==='Removal needed before works').length}</div><div class="l">Need removal first</div></div></div>`:''})()}
-  ${(()=>{const live=scaffR.filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
+  ${(()=>{const live=scaffR.filter(x=>x.status==='requested'||x.status==='confirmed').sort((a,b)=>String(a.strike_date).localeCompare(String(b.strike_date)));return live.length?`<div class="section-h"><h3>Scaffold call-offs</h3><span class="meta">${live.length}</span></div><div class="list">${live.map(scaffRow).join('')}</div>`:''})()}
   ${(()=>{const ds=delaysR;if(!ds.length)return'';const open=ds.filter(d=>d.status!=='resolved');const lost=ds.reduce((n,d)=>n+delayDays(d),0);
     const by=(k,list)=>list.map(v=>{const x=ds.filter(d=>(d[k]||'Not set')===v);return x.length?`<tr><td>${esc(v)}</td><td class="n">${x.length}</td><td class="n">${x.reduce((n,d)=>n+delayDays(d),0)}</td></tr>`:''}).join('');
     return`<div class="section-h"><h3>Delays</h3></div><div class="tiles"><div class="tile ${open.length?'alert':''}"><div class="v">${open.length}</div><div class="l">Ongoing delays</div></div><div class="tile"><div class="v">${lost}</div><div class="l">Days lost in total</div></div><div class="tile"><div class="v">${new Set(ds.map(d=>d.property_id)).size}</div><div class="l">Addresses delayed</div></div><div class="tile"><div class="v">${ds.filter(d=>d.cause==='Tenant'||d.cause==='Client').reduce((n,d)=>n+delayDays(d),0)}</div><div class="l">Days down to tenant or client</div></div></div>
@@ -1009,75 +1009,86 @@ function asbSheet(p){
    }}});
 }
 
-/* ---------- scaffold strike call-offs ---------- */
+/* ---------- scaffold call-offs: erect and strike ---------- */
 const scaffRef=x=>'SC-'+String(x.ref_no||0).padStart(4,'0');
 const openScaffold=pid=>[...S.scaffolds.values()].some(x=>x.property_id===pid&&(x.status==='requested'||x.status==='confirmed'));
+// The words for each kind of call-off
+const SK={
+  strike:{title:'Strike scaffold',on:'Strike on or by',checks:()=>SCAFF_CHECKS,done:'Struck',doneBtn:'Mark as struck',pmDone:"It's struck",doneHead:"When it's down",donePhoto:'Photo showing the scaffold has gone',when:'When will you strike it?',cancel:'Leave the scaffold up.',cc:'the scaffolder\'s date confirmation and "struck" notice'},
+  erect:{title:'Erect scaffold',on:'Erect on or by',checks:()=>ERECT_CHECKS,done:'Up',doneBtn:'Mark as up',pmDone:"It's up",doneHead:"When it's up",donePhoto:'Photo of the scaffold up',when:'When will you put it up?',cancel:"Don't put the scaffold up.",cc:'the scaffolder\'s date confirmation, "up" notice and handover certificate'}};
+const kindOf=x=>x.kind==='erect'?'erect':'strike';
+const scaffLabel=x=>x.status==='struck'?[SK[kindOf(x)].done,'p-ok']:(SCAFF[x.status]||SCAFF.requested);
 function scaffRow(x){
-  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=SCAFF[x.status]||SCAFF.requested;
+  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=scaffLabel(x);const k=SK[kindOf(x)];
   const when=x.status==='confirmed'&&x.confirmed_date?x.confirmed_date:x.strike_date;
-  return`<button type="button" class="row" data-act="open-scaffold" data-id="${x.id}"><div class="main"><span class="t">Strike scaffold${S.mode==='contractor'||!S.view?' · '+esc(p.address||''):''}</span><span class="s"><span class="mono">${scaffRef(x)}</span><span>${x.status==='struck'?'Struck '+fmtDate(x.struck_at):'By '+fmtDue(when)}</span>${(x.status==='requested'||x.status==='confirmed')&&when<todayISO()?'<span style="color:var(--bad);font-weight:700">Overdue</span>':''}${S.mode==='pm'&&x.chase_count?`<span>Chased ${x.chase_count}×</span>`:''}${S.mode==='pm'&&c?`<span>${esc(c.name)}</span>`:''}${S.mode==='pm'&&x.email_status==='failed'?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span></div></button>`;
+  return`<button type="button" class="row" data-act="open-scaffold" data-id="${x.id}"><div class="main"><span class="t">${k.title}${S.mode==='contractor'||!S.view?' · '+esc(p.address||''):''}</span><span class="s"><span class="mono">${scaffRef(x)}</span><span>${x.status==='struck'?k.done+' '+fmtDate(x.struck_at):'By '+fmtDue(when)}</span>${(x.status==='requested'||x.status==='confirmed')&&when<todayISO()?'<span style="color:var(--bad);font-weight:700">Overdue</span>':''}${S.mode==='pm'&&x.chase_count?`<span>Chased ${x.chase_count}×</span>`:''}${S.mode==='pm'&&c?`<span>${esc(c.name)}</span>`:''}${S.mode==='pm'&&x.email_status==='failed'?'<span style="color:var(--warn);font-weight:700">Not emailed</span>':''}</span></div><div class="end"><span class="pill ${cls}">${lab}</span></div></button>`;
 }
-function newScaffoldSheet(p){
+function newScaffoldSheet(p,kind){
+  const k=SK[kind]||SK.strike;const CHECKS=k.checks();
   const cs=p.project_id?contractorsOf(p.project_id):[];
   const scaffs=cs.filter(c=>c.trade==='Scaffolder');const list=scaffs.length?scaffs:cs;
   if(!list.length){toast('Add the scaffolder to this project first (Projects tab, trade: Scaffolder)');return}
   const tomorrow=new Date(Date.now()+day).toISOString().slice(0,10);
-  openSheet({title:'Call off scaffold',
+  openSheet({title:kind==='erect'?'Call off scaffold to go up':'Call off scaffold to come down',
    body:`${asbBanner(p,true)}<p class="meta" style="margin:0"><b style="color:var(--ink)">${esc(p.address)}</b> · <span class="mono">${esc(p.postcode)}</span></p>
    <div class="field"><label for="sf-c">1. Scaffolder</label><select id="sf-c" class="inp">${list.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>${scaffs.length?'':'<p class="help">No contractor on this project has the trade "Scaffolder", so everyone is listed.</p>'}</div>
-   <div class="field"><label for="sf-d">2. Strike on or by</label><input id="sf-d" class="inp" type="date" min="${todayISO()}" value="${tomorrow}"></div>
-   <div class="field"><span class="lab">3. Before calling it off, check</span><div style="display:flex;flex-direction:column;gap:10px">${SCAFF_CHECKS.map((x,i)=>`<label class="check"><input type="checkbox" name="sf-k" value="${esc(x)}"><span>${esc(x)}</span></label>`).join('')}</div></div>
-   <div class="field"><label for="sf-n">Notes for the scaffolder (optional)</label><textarea id="sf-n" class="inp" rows="3" placeholder="e.g. Access via rear lane. Tenant's car on the drive after 5pm."></textarea></div>
+   <div class="field"><label for="sf-d">2. ${k.on}</label><input id="sf-d" class="inp" type="date" min="${todayISO()}" value="${tomorrow}"></div>
+   <div class="field"><span class="lab">3. Before calling it off, check</span><div style="display:flex;flex-direction:column;gap:10px">${CHECKS.map(x=>`<label class="check"><input type="checkbox" name="sf-k" value="${esc(x)}"><span>${esc(x)}</span></label>`).join('')}</div></div>
+   <div class="field"><label for="sf-n">Notes for the scaffolder (optional)</label><textarea id="sf-n" class="inp" rows="3" placeholder="${kind==='erect'?'e.g. Front and back, 1 lift plus handrail. Access via rear lane.':'e.g. Access via rear lane. Tenant\'s car on the drive after 5pm.'}"></textarea></div>
    <div class="field"><span class="lab">Photos (optional)</span>${photoField('sf')}</div>
    <label class="check"><input type="checkbox" id="sf-mail" checked><span><b>Email the scaffolder now</b><br><span class="meta" id="sf-to"></span></span></label>
-   ${copyMeField('sf-cc','Get a copy of the call-off, and of the scaffolder\'s date confirmation and "struck" notice.')}`,
+   ${copyMeField('sf-cc','Get a copy of the call-off, and of '+k.cc+'.')}`,
    foot:`<button type="button" class="btn primary" data-act="sf-save">Call off scaffold</button>`,
    mount(sh){const to=()=>{const c=S.contractors.get($('#sf-c').value);const pr=S.projects.get(p.project_id)||{};$('#sf-to').textContent=c?`To ${c.email}${pr.pm_email?', copy to '+pr.pm_email:''}`:''};$('#sf-c',sh).addEventListener('change',to);to()},
    acts:{'sf-save':async b=>{
      const checks=[...document.querySelectorAll('input[name="sf-k"]:checked')].map(i=>i.value);
-     if(checks.length<SCAFF_CHECKS.length&&b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`${SCAFF_CHECKS.length-checks.length} check${SCAFF_CHECKS.length-checks.length>1?'s':''} not ticked. Tap again to call off anyway`;return}
+     if(checks.length<CHECKS.length&&b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`${CHECKS.length-checks.length} check${CHECKS.length-checks.length>1?'s':''} not ticked. Tap again to call off anyway`;return}
      if(photosBusy()){toast('Wait for photos to finish uploading');return}
      const ccEmail=copyMeValue('sf-cc');if(ccEmail===null){toast('Put your work email in, or untick Copy me in');$('#sf-cc-email').focus();return}
      const sendEmail=$('#sf-mail').checked;b.disabled=true;b.textContent=sendEmail?'Sending…':'Saving…';
-     try{const r=await api('createScaffold',{property_id:p.id,contractor_id:$('#sf-c').value,strike_date:$('#sf-d').value,checks,notes:$('#sf-n').value,photos:photoPaths('sf'),sendEmail,ccEmail});rememberEmail(ccEmail);await load();closeSheet();toast(!sendEmail?'Call-off saved':r.scaffold.email_status==='sent'?'Scaffold called off and emailed':'Saved, but the email didn\'t send. Open it to try again.')}
+     try{const r=await api('createScaffold',{kind,property_id:p.id,contractor_id:$('#sf-c').value,strike_date:$('#sf-d').value,checks,notes:$('#sf-n').value,photos:photoPaths('sf'),sendEmail,ccEmail});rememberEmail(ccEmail);await load();closeSheet();toast(!sendEmail?'Call-off saved':r.scaffold.email_status==='sent'?'Scaffold called off and emailed':'Saved, but the email didn\'t send. Open it to try again.')}
      catch(e){b.disabled=false;b.textContent='Call off scaffold';toast(e.message)}
    }}});
 }
 function scaffoldSheet(x){
-  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=SCAFF[x.status]||SCAFF.requested;
+  const p=S.props.get(x.property_id)||{};const c=S.contractors.get(x.contractor_id);const [lab,cls]=scaffLabel(x);const kind=kindOf(x);const k=SK[kind];
   const gal=ids=>ids&&ids.length?`<div class="gallery">${ids.map(id=>`<img src="${src(id)}" alt="Scaffold photo" data-act="view-photo" data-src="${src(id)}">`).join('')}</div>`:'';
+  const certs=(x.cert_docs||[]).length?`<div class="field"><span class="lab">Handover certificate</span><div class="photos">${x.cert_docs.map(docThumb).join('')}</div></div>`:'';
   const live=x.status==='requested'||x.status==='confirmed';
   if(S.mode==='contractor'){
     openSheet({title:scaffRef(x),
      body:`<span class="pill ${cls}" style="align-self:flex-start">${lab}</span>${asbBanner(p)}
-     <h3 style="font-size:22px">Strike scaffold</h3>
-     <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Strike on</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>You confirmed</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.requested_by?`<dt>Requested by</dt><dd>${esc(x.requested_by)}</dd>`:''}</dl>
+     <h3 style="font-size:22px">${k.title}</h3>
+     <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>${kind==='erect'?'Erect on':'Strike on'}</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>You confirmed</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.requested_by?`<dt>Requested by</dt><dd>${esc(x.requested_by)}</dd>`:''}</dl>
      ${x.notes?`<div class="notes-box">${esc(x.notes)}</div>`:''}${gal(x.photos)}
      ${p.notes?`<div class="field"><span class="lab">Access notes</span><div class="notes-box">${esc(p.notes)}</div></div>`:''}
-     ${x.status==='cancelled'?'<div class="banner"><b>Cancelled.</b> Leave the scaffold up.</div>':''}
-     ${x.status==='struck'?`<div class="field"><span class="lab">Your photos</span>${gal(x.struck_photos)}</div>`:''}
-     ${x.status==='requested'?`<div class="section-h"><h3>Confirm your date</h3></div><div class="field"><label for="cf-d">When will you strike it?</label><input id="cf-d" class="inp" type="date" min="${todayISO()}" value="${esc(x.strike_date)}"></div><div class="field"><label for="cf-n">Note (optional)</label><textarea id="cf-n" class="inp" rows="2" placeholder="e.g. Crew there 8am"></textarea></div>`:''}
-     ${live?`<div class="section-h"><h3>When it's down</h3></div><div class="field"><span class="lab">Photo showing the scaffold has gone</span>${photoField('struck')}</div>`:''}`,
-     foot:x.status==='requested'?`<button type="button" class="btn" data-act="cf-ok">Confirm date</button><button type="button" class="btn primary" data-act="cf-struck">Mark as struck</button>`:x.status==='confirmed'?`<button type="button" class="btn primary" data-act="cf-struck">Mark as struck</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
+     ${x.status==='cancelled'?`<div class="banner"><b>Cancelled.</b> ${k.cancel}</div>`:''}
+     ${x.status==='struck'?`<div class="field"><span class="lab">Your photos</span>${gal(x.struck_photos)}</div>${certs}`:''}
+     ${x.status==='requested'?`<div class="section-h"><h3>Confirm your date</h3></div><div class="field"><label for="cf-d">${k.when}</label><input id="cf-d" class="inp" type="date" min="${todayISO()}" value="${esc(x.strike_date)}"></div><div class="field"><label for="cf-n">Note (optional)</label><textarea id="cf-n" class="inp" rows="2" placeholder="e.g. Crew there 8am"></textarea></div>`:''}
+     ${live?`<div class="section-h"><h3>${k.doneHead}</h3></div><div class="field"><span class="lab">${k.donePhoto}</span>${photoField('struck')}</div>${kind==='erect'?`<div class="field"><span class="lab">Handover certificate</span><p class="help">A PDF, or a photo of the signed certificate.</p>${photoField('cert',[],{pdf:true})}</div>`:''}`:''}`,
+     foot:x.status==='requested'?`<button type="button" class="btn" data-act="cf-ok">Confirm date</button><button type="button" class="btn primary" data-act="cf-struck">${k.doneBtn}</button>`:x.status==='confirmed'?`<button type="button" class="btn primary" data-act="cf-struck">${k.doneBtn}</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
      acts:{
       'cf-ok':async b=>{b.disabled=true;try{await api('scaffoldReply',{id:x.id,op:'confirm',date:$('#cf-d').value,note:$('#cf-n').value});await load();closeSheet();toast('Date confirmed. The PM has been told.')}catch(e){b.disabled=false;toast(e.message)}},
-      'cf-struck':async b=>{if(photosBusy()){toast('Wait for photos to finish uploading');return}const ph=photoPaths('struck');if(!ph.length){toast('Add a photo showing the scaffold has gone');return}b.disabled=true;try{await api('scaffoldReply',{id:x.id,op:'struck',photos:ph,note:$('#cf-n')?$('#cf-n').value:''});await load();closeSheet();toast('Marked as struck. The PM has been told.')}catch(e){b.disabled=false;toast(e.message)}}}});
+      'cf-struck':async b=>{if(photosBusy()){toast('Wait for photos to finish uploading');return}const ph=photoPaths('struck');if(!ph.length){toast(kind==='erect'?'Add a photo of the scaffold up':'Add a photo showing the scaffold has gone');return}
+        const certs=kind==='erect'?photoPaths('cert'):[];
+        if(kind==='erect'&&!certs.length&&b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='No handover certificate. Tap again to send without';return}
+        b.disabled=true;try{await api('scaffoldReply',{id:x.id,op:'struck',photos:ph,certs,note:$('#cf-n')?$('#cf-n').value:''});await load();closeSheet();toast(kind==='erect'?'Marked as up. The PM has been told.':'Marked as struck. The PM has been told.')}catch(e){b.disabled=false;toast(e.message)}}}});
     return;
   }
   openSheet({title:scaffRef(x),
    body:`<span class="pill ${cls}" style="align-self:flex-start">${lab}</span>
-   <h3 style="font-size:22px">Strike scaffold</h3>
+   <h3 style="font-size:22px">${k.title}</h3>
    ${x.email_status==='sent'?`<div class="email-line sent"><span style="flex:1;min-width:0">Emailed to <b>${esc(x.emailed_to)}</b> ${ago(x.emailed_at)}</span></div>`:x.email_status==='none'?'':`<div class="email-line unsent"><span style="flex:1;min-width:0"><b>Email not sent.</b> ${esc(x.email_error||'')}</span>${S.emailReady?`<button type="button" class="btn" data-act="sf-resend">Send again</button>`:''}</div>`}
-   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Scaffolder</dt><dd>${c?esc(c.name):'Removed'}</dd><dt>You asked for</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>They'll strike</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.struck_at?`<dt>Struck</dt><dd>${fmtDate(x.struck_at)}${x.struck_by?' by '+esc(x.struck_by):''}</dd>`:''}<dt>Called off</dt><dd>${fmtDate(x.requested_at)}${x.requested_by?' by '+esc(x.requested_by):''}</dd>${x.chase_count?`<dt>Chased</dt><dd>${x.chase_count} time${x.chase_count>1?'s':''}, last ${fmtDue(x.last_chased)}</dd>`:''}</dl>
+   <dl class="kv"><dt>Address</dt><dd>${esc(p.address||'')} <span class="mono">${esc(p.postcode||'')}</span></dd><dt>Scaffolder</dt><dd>${c?esc(c.name):'Removed'}</dd><dt>You asked for</dt><dd>${fmtDue(x.strike_date)}</dd>${x.confirmed_date?`<dt>They confirmed</dt><dd>${fmtDue(x.confirmed_date)}</dd>`:''}${x.struck_at?`<dt>${k.done}</dt><dd>${fmtDate(x.struck_at)}${x.struck_by?' by '+esc(x.struck_by):''}</dd>`:''}<dt>Called off</dt><dd>${fmtDate(x.requested_at)}${x.requested_by?' by '+esc(x.requested_by):''}</dd>${x.chase_count?`<dt>Chased</dt><dd>${x.chase_count} time${x.chase_count>1?'s':''}, last ${fmtDue(x.last_chased)}</dd>`:''}</dl>
    ${(x.checks||[]).length?`<div class="field"><span class="lab">Checked before call-off</span><div class="notes-box">${x.checks.map(esc).join('<br>')}</div></div>`:''}
    ${x.notes?`<div class="notes-box">${esc(x.notes)}</div>`:''}
    ${x.scaff_note?`<div class="field"><span class="lab">Scaffolder's note</span><div class="notes-box">${esc(x.scaff_note)}</div></div>`:''}
-   ${gal(x.struck_photos)}`,
-   foot:live?`<button type="button" class="btn danger" data-act="sf-cancel">Cancel call-off</button><button type="button" class="btn primary" data-act="sf-struck">It's struck</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
+   ${gal(x.struck_photos)}${certs}${kind==='erect'&&x.status==='struck'&&!(x.cert_docs||[]).length?'<div class="banner">No handover certificate sent. Get one before the scaffold is used.</div>':''}`,
+   foot:live?`<button type="button" class="btn danger" data-act="sf-cancel">Cancel call-off</button><button type="button" class="btn primary" data-act="sf-struck">${k.pmDone}</button>`:`<button type="button" class="btn" data-act="close-sheet">Done</button>`,
    acts:{
     'sf-resend':async b=>{b.disabled=true;try{const r=await api('scaffoldAction',{id:x.id,op:'resend'});await load();closeSheet();toast(r.scaffold.email_status==='sent'?'Emailed':'The email didn\'t send')}catch(e){b.disabled=false;toast(e.message)}},
-    'sf-struck':async b=>{b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'struck'});await load();closeSheet();toast('Marked as struck')}catch(e){b.disabled=false;toast(e.message)}},
-    'sf-cancel':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap again: the scaffolder is emailed to leave it up';return}b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'cancel'});await load();closeSheet();toast('Call-off cancelled and scaffolder told')}catch(e){b.disabled=false;toast(e.message)}}}});
+    'sf-struck':async b=>{b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'struck'});await load();closeSheet();toast(kind==='erect'?'Marked as up':'Marked as struck')}catch(e){b.disabled=false;toast(e.message)}},
+    'sf-cancel':async b=>{if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=kind==='erect'?'Tap again: the scaffolder is told not to put it up':'Tap again: the scaffolder is emailed to leave it up';return}b.disabled=true;try{await api('scaffoldAction',{id:x.id,op:'cancel'});await load();closeSheet();toast('Call-off cancelled and scaffolder told')}catch(e){b.disabled=false;toast(e.message)}}}});
 }
 
 /* ---------- contractor view ---------- */
@@ -1093,8 +1104,8 @@ function contractorBody(){
   ${list.length?`<div class="list">${list.map(s=>snagRow(s)).join('')}</div>`:`<div class="empty"><h3>${S.cF==='open'?'Nothing to do':'Nothing here yet'}</h3><p>${S.cF==='open'?'You\'ve no open snags. New ones will show here and land in your email.':'Snags you close out show here.'}</p></div>`}`;
   return`<div><h1 class="page-title">${scOnly?'Your scaffold jobs':scs.length?'Your jobs':'Your snags'}</h1><p class="lead">${esc(S.me?S.me.name:'')}${S.projects.size?' · '+esc([...S.projects.values()][0].name):''}</p></div>
   ${snagPart}
-  ${scs.length?`<div class="section-h"><h3>Scaffold to strike</h3><span class="meta">${scs.filter(x=>x.status==='requested'||x.status==='confirmed').length} to do</span></div><div class="list">${scs.map(scaffRow).join('')}</div>`:''}
-  <p class="meta" style="margin:0">${scOnly?'Tap a job to confirm your strike date, then mark it struck with a photo when the scaffold is down.':'To close out a snag: tap it, take a photo of the finished repair, then tap <b>Close out snag</b>.'} Bookmark this page to come back to it.</p>`;
+  ${scs.length?`<div class="section-h"><h3>Scaffold call-offs</h3><span class="meta">${scs.filter(x=>x.status==='requested'||x.status==='confirmed').length} to do</span></div><div class="list">${scs.map(scaffRow).join('')}</div>`:''}
+  <p class="meta" style="margin:0">${scOnly?'Tap a job to confirm your date, then mark it up or struck with a photo when it\'s done.':'To close out a snag: tap it, take a photo of the finished repair, then tap <b>Close out snag</b>.'} Bookmark this page to come back to it.</p>`;
 }
 function contractorSnagSheet(s){
   const p=S.props.get(s.property_id)||{};const [lab,cls]=snagLabel(s);
@@ -1133,8 +1144,8 @@ function exportCsv(kind){
     [...S.surveys.values()].filter(x=>inRep(x.property_id)).forEach(sv=>{const p=P(sv.property_id);surveySections(sv.type,sv).forEach(sec=>sec.qs.forEach(([id,label,,,flag])=>{const a=sv.answers&&sv.answers[id];if(a==null)return;rows.push([p.address,p.postcode,projectName(p),WORKS[sv.type],sv.status,fmtDate(sv.updated_at),sv.by_name,sec.title,label,Array.isArray(a)?a.join('; '):a,flag&&(a===flag||(Array.isArray(a)&&a.includes(flag)))?'CHECK':''])}))})}
   else if(kind==='delays'){name=`delays-${d}.csv`;rows=[['Address','Postcode','UPRN / ref','Project','Reason','Responsible','Started','Ended','Days lost','Status','Notes','Logged by','Logged on']];
     [...S.delays.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>String(a.started).localeCompare(String(b.started))).forEach(x=>{const p=P(x.property_id);rows.push([p.address,p.postcode,p.ref,projectName(p),x.reason,x.cause,fmtDue(x.started),x.ended?fmtDue(x.ended):'Ongoing',delayDays(x),x.status==='resolved'?'Resolved':'Ongoing',x.notes,x.logged_by,fmtDate(x.logged_at)])})}
-  else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Address','Postcode','Project','Scaffolder','Status','Strike requested for','Confirmed date','Struck','Called off','Called off by','Checks done','Notes']];
-    [...S.scaffolds.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),p.address,p.postcode,projectName(p),c?c.name:'',(SCAFF[x.status]||SCAFF.requested)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
+  else if(kind==='scaffold'){name=`scaffold-calloffs-${d}.csv`;rows=[['Ref','Type','Address','Postcode','Project','Scaffolder','Status','Requested for','Confirmed date','Done','Called off','Called off by','Checks done','Notes']];
+    [...S.scaffolds.values()].filter(x=>inRep(x.property_id)).sort((a,b)=>a.ref_no-b.ref_no).forEach(x=>{const p=P(x.property_id);const c=S.contractors.get(x.contractor_id);rows.push([scaffRef(x),kindOf(x)==='erect'?'Erect':'Strike',p.address,p.postcode,projectName(p),c?c.name:'',scaffLabel(x)[0],fmtDue(x.strike_date),fmtDue(x.confirmed_date),fmtDate(x.struck_at),fmtDate(x.requested_at),x.requested_by,(x.checks||[]).join('; '),x.notes])})}
   else{name=`addresses-${d}.csv`;rows=[['UPRN / ref','Address','Postcode','Project','Work','Status','Open snags','Asbestos','Asbestos where','Affects works','Asbestos survey ref','Asbestos survey date','Access notes']];
     sortedProps().filter(p=>inRep(p.id)).forEach(p=>rows.push([p.ref,p.address,p.postcode,projectName(p),(p.works||[]).map(w=>WORKS[w]).join('; '),p.status,openSnagCount(p.id),asbStatus(p),p.asb_notes,p.asb_impact,p.asb_ref,fmtDue(p.asb_date),p.notes]))}
   if(rows.length<2){toast('Nothing to download yet');return}
@@ -1190,7 +1201,7 @@ document.addEventListener('click',e=>{
     case'new-delay':delaySheet(S.props.get(S.view.id));break;
     case'open-delay':{const d=S.delays.get(t.dataset.id);const p=d&&S.props.get(d.property_id);if(p)delaySheet(p,d);break}
     case'asb-edit':asbSheet(S.props.get(S.view.id));break;
-    case'new-scaffold':newScaffoldSheet(S.props.get(S.view.id));break;
+    case'new-scaffold':newScaffoldSheet(S.props.get(S.view.id),t.dataset.v||'strike');break;
     case'open-scaffold':{const x=S.scaffolds.get(t.dataset.id);if(x)scaffoldSheet(x);break}
     case'open-pm':pmSheet(S.pms.get(t.dataset.id));break;
     case'change-name':nameSheet();break;
